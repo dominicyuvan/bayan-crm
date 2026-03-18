@@ -1,10 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Timestamp, addDoc, serverTimestamp } from "firebase/firestore";
+import { addDoc, serverTimestamp, type WithFieldValue } from "firebase/firestore";
 import { toast } from "sonner";
 import { leadsCol } from "@/lib/firestore";
-import type { LeadStatus } from "@/lib/types";
+import type { Lead, LeadStatus } from "@/lib/types";
 import { useAuth } from "@/lib/auth-context";
 import { useContacts, useTeamMembers, useFirestore } from "@/lib/firestore-provider";
 import { Button } from "@/components/ui/button";
@@ -65,7 +65,7 @@ export function AddLeadModal() {
         return;
       }
 
-      await addDoc(leadsCol, {
+      const payload = {
         contactId,
         propertyType: propertyType.trim(),
         location: location.trim(),
@@ -76,10 +76,12 @@ export function AddLeadModal() {
         cadenceId: cadenceId,
         cadenceStepIndex: cadenceId ? 0 : null,
         notes: notes.trim(),
-        createdAt: serverTimestamp() as unknown as Timestamp,
-        updatedAt: serverTimestamp() as unknown as Timestamp,
-        lastContactAt: null,
-      });
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        lastContactAt: serverTimestamp(),
+      } satisfies WithFieldValue<Lead>;
+
+      await addDoc(leadsCol, payload);
 
       toast.success("Lead saved");
       setOpen(false);

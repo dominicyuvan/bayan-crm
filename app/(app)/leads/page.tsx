@@ -95,7 +95,10 @@ export default function LeadsPage() {
           placeholder="Search by contact, property type, location..."
           className="sm:max-w-sm"
         />
-        <Select value={status} onValueChange={(v) => setStatus(v as any)}>
+        <Select
+          value={status}
+          onValueChange={(v) => setStatus(v as typeof STATUSES[number])}
+        >
           <SelectTrigger className="sm:w-44">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
@@ -107,7 +110,10 @@ export default function LeadsPage() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={temp} onValueChange={(v) => setTemp(v as any)}>
+        <Select
+          value={temp}
+          onValueChange={(v) => setTemp(v as typeof TEMPS[number])}
+        >
           <SelectTrigger className="sm:w-44">
             <SelectValue placeholder="Temperature" />
           </SelectTrigger>

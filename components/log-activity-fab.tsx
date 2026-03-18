@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { Timestamp, addDoc, serverTimestamp } from "firebase/firestore";
+import { Timestamp, addDoc, serverTimestamp, type WithFieldValue } from "firebase/firestore";
 import { toast } from "sonner";
 import { PlusIcon } from "lucide-react";
 import { activitiesCol, tasksCol } from "@/lib/firestore";
 import { useAuth } from "@/lib/auth-context";
 import { useContacts, useLeads, useTeamMembers } from "@/lib/firestore-provider";
+import type { Activity, Task } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -57,16 +58,17 @@ export function LogActivityFab() {
     setSubmitting(true);
     try {
       if (mode === "activity") {
-        await addDoc(activitiesCol, {
+        const payload = {
           type: "note",
           title: title.trim(),
           notes: notes.trim(),
           contactId: contactId || "",
           leadId: leadId || "",
           repId: profile.uid,
-          occurredAt: serverTimestamp() as unknown as Timestamp,
-          createdAt: serverTimestamp() as unknown as Timestamp,
-        });
+          occurredAt: serverTimestamp(),
+          createdAt: serverTimestamp(),
+        } satisfies WithFieldValue<Activity>;
+        await addDoc(activitiesCol, payload);
         toast.success("Activity logged");
       } else {
         if (!dueDate) {
@@ -74,7 +76,7 @@ export function LogActivityFab() {
           return;
         }
         const dt = new Date(`${dueDate}T${dueTime || "09:00"}:00`);
-        await addDoc(tasksCol, {
+        const payload = {
           type: "follow_up",
           title: title.trim(),
           notes: notes.trim(),
@@ -83,9 +85,10 @@ export function LogActivityFab() {
           assignedToId: assignedToId || profile.uid,
           dueAt: Timestamp.fromDate(dt),
           status: "pending",
-          createdAt: serverTimestamp() as unknown as Timestamp,
-          updatedAt: serverTimestamp() as unknown as Timestamp,
-        });
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        } satisfies WithFieldValue<Task>;
+        await addDoc(tasksCol, payload);
         toast.success("Task scheduled");
       }
 

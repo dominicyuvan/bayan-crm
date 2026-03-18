@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Timestamp, addDoc, serverTimestamp } from "firebase/firestore";
+import { addDoc, serverTimestamp, type WithFieldValue } from "firebase/firestore";
 import { toast } from "sonner";
 import { contactsCol } from "@/lib/firestore";
 import { useAuth } from "@/lib/auth-context";
 import { useTeamMembers } from "@/lib/firestore-provider";
+import type { Contact } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -63,7 +64,7 @@ export function AddContactModal() {
         .map((t) => t.trim())
         .filter(Boolean);
 
-      await addDoc(contactsCol, {
+      const payload = {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         phone: phone.trim(),
@@ -76,10 +77,12 @@ export function AddContactModal() {
         assignedRepId: assignedRepId,
         tags: tagList,
         notes: notes.trim(),
-        createdAt: serverTimestamp() as unknown as Timestamp,
-        updatedAt: serverTimestamp() as unknown as Timestamp,
-        lastContactAt: serverTimestamp() as any,
-      });
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        lastContactAt: serverTimestamp(),
+      } satisfies WithFieldValue<Contact>;
+
+      await addDoc(contactsCol, payload);
 
       toast.success("Contact saved");
       setOpen(false);

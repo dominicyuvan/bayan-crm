@@ -40,14 +40,14 @@ export interface Lead {
   contactId: string;
   propertyType?: string;
   location?: string;
-  valueOmr?: number;
+  valueOmr?: number | null;
   status: LeadStatus;
   temperature?: LeadTemperature;
   score?: number;
   source?: string;
   assignedRepId?: string;
   cadenceId?: string;
-  cadenceStepIndex?: number;
+  cadenceStepIndex?: number | null;
   notes?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
