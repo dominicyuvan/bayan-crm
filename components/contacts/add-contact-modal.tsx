@@ -78,7 +78,7 @@ export function AddContactModal() {
         notes: notes.trim(),
         createdAt: serverTimestamp() as unknown as Timestamp,
         updatedAt: serverTimestamp() as unknown as Timestamp,
-        lastContactAt: null,
+        lastContactAt: serverTimestamp() as unknown as Timestamp,
       });
 
       toast.success("Contact saved");
