@@ -114,7 +114,7 @@ export default function ReportsPage() {
   });
 
   const chartData = rows.map((r) => ({
-    name: r.rep.displayName,
+    name: r.rep.name,
     New: r.leads,
     Won: r.wonDeals,
     Lost: r.lostDeals,
@@ -174,7 +174,7 @@ export default function ReportsPage() {
           <tbody>
             {rows.map((r) => (
               <tr key={r.rep.id} className="border-b last:border-0">
-                <td className="py-2 pr-4">{r.rep.displayName}</td>
+                <td className="py-2 pr-4">{r.rep.name}</td>
                 <td className="py-2 pr-4">{r.leads}</td>
                 <td className="py-2 pr-4">{r.wonDeals}</td>
                 <td className="py-2 pr-4">{r.lostDeals}</td>

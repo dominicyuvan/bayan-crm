@@ -94,8 +94,11 @@ export default function ContactsPage() {
             <SelectContent>
               <SelectItem value="all">All reps</SelectItem>
               {team.items.map((m) => (
-                <SelectItem key={m.id} value={m.uid}>
-                  {m.displayName}
+                <SelectItem
+                  key={m.id}
+                  value={m.id ?? m.email}
+                >
+                  {m.name}
                 </SelectItem>
               ))}
             </SelectContent>

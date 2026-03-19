@@ -67,7 +67,6 @@ export function AddTaskModal() {
         notes: notes.trim(),
         contactId: contactId || "",
         leadId: leadId || "",
-        assignedToId: assignedToId || profile?.uid || "",
         dueAt: Timestamp.fromDate(dt),
         status: "pending",
         createdAt: serverTimestamp(),
@@ -178,8 +177,8 @@ export function AddTaskModal() {
               </SelectTrigger>
               <SelectContent>
                 {team.items.map((m) => (
-                  <SelectItem key={m.id} value={m.uid}>
-                    {m.displayName}
+                  <SelectItem key={m.id} value={m.id ?? m.email}>
+                    {m.name}
                   </SelectItem>
                 ))}
               </SelectContent>

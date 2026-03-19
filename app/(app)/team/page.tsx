@@ -27,7 +27,7 @@ function computeStatsForMember(
   activities: ReturnType<typeof useActivities>["items"]
 ) {
   const monthStart = startOfMonth(new Date());
-  const memberLeads = leads.filter((l) => l.assignedRepId === member.uid);
+  const memberLeads = leads.filter((l) => l.assignedRepId === member.id);
   const leadsCount = memberLeads.length;
   const wonDeals = memberLeads.filter((l) => l.status === "Won").length;
   const pipelineValue = memberLeads.reduce(
@@ -36,7 +36,7 @@ function computeStatsForMember(
   );
 
   const memberActivities = activities.filter(
-    (a) => a.repId === member.uid && a.occurredAt.toDate() >= monthStart
+    (a) => a.repId === member.id && a.occurredAt.toDate() >= monthStart
   );
 
   const activitiesThisMonth = memberActivities.length;
@@ -55,7 +55,7 @@ function AddEditMemberDialog({
 }) {
   const [open, setOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
-  const [name, setName] = React.useState(member?.displayName ?? "");
+  const [name, setName] = React.useState(member?.name ?? "");
   const [email, setEmail] = React.useState(member?.email ?? "");
   const [role, setRole] = React.useState<MemberRoleOption>(
     (member?.role as MemberRoleOption) ?? "sales_executive"
@@ -67,7 +67,7 @@ function AddEditMemberDialog({
 
   React.useEffect(() => {
     if (member && mode === "edit" && open) {
-      setName(member.displayName ?? "");
+      setName(member.name ?? "");
       setEmail(member.email ?? "");
       setRole((member.role as MemberRoleOption) ?? "sales_executive");
       setPhone(member.phone ?? "");
@@ -90,7 +90,6 @@ function AddEditMemberDialog({
       if (mode === "add") {
         const payload = {
           name: name.trim(),
-          displayName: name.trim(),
           email: email.toLowerCase(),
           role,
           phone: phone.trim(),

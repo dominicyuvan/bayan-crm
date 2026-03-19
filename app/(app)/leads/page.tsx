@@ -138,8 +138,11 @@ export default function LeadsPage() {
             <SelectContent>
               <SelectItem value="all">All reps</SelectItem>
               {team.items.map((m) => (
-                <SelectItem key={m.id} value={m.uid}>
-                  {m.displayName}
+                <SelectItem
+                  key={m.id}
+                  value={m.id ?? m.email}
+                >
+                  {m.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -179,8 +182,7 @@ export default function LeadsPage() {
                 {filtered.map((l) => {
                   const c = contacts.items.find((cc) => cc.id === l.contactId);
                   const repName =
-                    team.items.find((m) => m.uid === l.assignedRepId)?.displayName ??
-                    "—";
+                    team.items.find((m) => m.id === l.assignedRepId)?.name ?? "—";
                   return (
                     <TableRow
                       key={l.id}

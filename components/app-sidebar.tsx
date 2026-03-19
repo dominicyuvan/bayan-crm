@@ -123,14 +123,14 @@ export function AppSidebar({
               {profile?.initials ?? "U"}
             </AvatarFallback>
           </Avatar>
-          <div className={cn("min-w-0", collapsed && "sr-only")}>
-            <div className="truncate text-sm font-medium">
-              {profile?.displayName ?? "User"}
+            <div className={cn("min-w-0", collapsed && "sr-only")}>
+              <div className="truncate text-sm font-medium">
+                {profile?.displayName ?? profile?.email ?? "User"}
+              </div>
+              <div className="truncate text-xs text-white/60">
+                {profile?.role ?? ""}
+              </div>
             </div>
-            <div className="truncate text-xs text-white/60">
-              {profile?.email ?? ""}
-            </div>
-          </div>
         </div>
       </div>
     </aside>
