@@ -15,7 +15,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Phone, MessageCircle, ChevronRight } from "lucide-react";
-import { whatsappLink } from "@/lib/utils";
+
+function toWaNumber(value: string) {
+  return value.replace(/[^\d]/g, "");
+}
 
 export default function ContactsPage() {
   const { profile } = useAuth();
@@ -83,6 +86,8 @@ export default function ContactsPage() {
     onClick: (c: (typeof contacts.items)[number]) => void;
   }) {
     const initials = `${contact.firstName?.[0] ?? ""}${contact.lastName?.[0] ?? ""}`;
+    const whatsappValue = contact.whatsapp || contact.phone || "";
+    const waDigits = toWaNumber(whatsappValue);
     return (
       <div
         onClick={() => onClick(contact)}
@@ -112,9 +117,9 @@ export default function ContactsPage() {
               <Phone className="h-3 w-3" /> {contact.phone}
             </a>
           )}
-          {contact.whatsapp && (
+          {waDigits && (
             <a
-              href={whatsappLink(contact.whatsapp)}
+              href={`https://wa.me/${waDigits}`}
               onClick={(e) => e.stopPropagation()}
               target="_blank"
               rel="noreferrer"
@@ -231,6 +236,30 @@ export default function ContactsPage() {
                       {tsToDate(c.lastContactAt)?.toLocaleDateString() ?? "—"}
                     </TableCell>
                     <TableCell className="text-right">
+                      {(() => {
+                        const raw = c.whatsapp || c.phone || "";
+                        const digits = toWaNumber(raw);
+                        if (!digits) return null;
+                        return (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="mr-2 text-green-600 hover:bg-green-50 hover:text-green-700"
+                            title="Open in WhatsApp Web"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(
+                                `https://web.whatsapp.com/send?phone=${digits}`,
+                                "_blank",
+                                "noopener,noreferrer"
+                              );
+                            }}
+                          >
+                            <MessageCircle className="h-4 w-4" />
+                            <span className="sr-only">Open in WhatsApp Web</span>
+                          </Button>
+                        );
+                      })()}
                       <Button
                         size="sm"
                         variant="outline"

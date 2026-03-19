@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { BellIcon, LogOutIcon, SearchIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
@@ -24,7 +25,10 @@ type SearchResult =
 
 export function TopBar() {
   const router = useRouter();
+  const pathname = usePathname();
   const { profile, signOut } = useAuth();
+  const showSearchDropdown = pathname !== "/dashboard";
+
   const contacts = useContacts();
   const leads = useLeads();
   const tasks = useTasks();
@@ -113,7 +117,7 @@ export function TopBar() {
               placeholder="Search contacts & leads..."
               className="pl-9"
             />
-            {open && results.length > 0 && (
+            {showSearchDropdown && open && results.length > 0 && (
               <div className="absolute left-0 right-0 top-[calc(100%+8px)] rounded-xl border bg-popover p-1 shadow-lg">
                 {results.map((r) => (
                   <button

@@ -12,14 +12,14 @@ import {
   X,
 } from "lucide-react";
 
-import { activitiesCol } from "@/lib/firestore";
+import { activitiesCol, contactsCol } from "@/lib/firestore";
 import { useAuth } from "@/lib/auth-context";
 import { useContacts, useLeads } from "@/lib/firestore-provider";
-import type { Activity } from "@/lib/types";
+import type { Activity, Contact } from "@/lib/types";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
@@ -119,6 +119,10 @@ export function LogActivityFab({
     setNotesHint(null);
     setNotes("");
     setLinkExpanded(false);
+    setContactSearch("");
+    setShowContactResults(false);
+    setSelectedContactId(null);
+    setSelectedContactName("");
   }, [isControlled, onExternalOpenChange]);
 
   const setOpen = React.useCallback(
@@ -142,21 +146,26 @@ export function LogActivityFab({
 
   const [linkExpanded, setLinkExpanded] = React.useState(false);
   const [selectedContactId, setSelectedContactId] = React.useState<string | null>(null);
-
-  const selectedContactName = React.useMemo(() => {
-    if (!selectedContactId) return null;
-    const c = contactById.get(selectedContactId);
-    if (!c) return null;
-    const full = `${c.firstName ?? ""} ${c.lastName ?? ""}`.trim();
-    return full || null;
-  }, [contactById, selectedContactId]);
+  const [selectedContactName, setSelectedContactName] = React.useState("");
+  const [contactSearch, setContactSearch] = React.useState("");
+  const [showContactResults, setShowContactResults] = React.useState(false);
 
   // Initialize linked contact from props when the panel opens.
   React.useEffect(() => {
     if (!open) return;
     const nextContactId = preselectedContactId ?? derivedContactIdFromLead ?? null;
     setSelectedContactId(nextContactId);
-  }, [open, preselectedContactId, derivedContactIdFromLead]);
+    if (nextContactId) {
+      const c = contactById.get(nextContactId);
+      const name = c ? `${c.firstName ?? ""} ${c.lastName ?? ""}`.trim() : "";
+      setSelectedContactName(name);
+      setContactSearch(name);
+      setShowContactResults(false);
+    } else {
+      setSelectedContactName("");
+      setContactSearch("");
+    }
+  }, [open, preselectedContactId, derivedContactIdFromLead, contactById]);
 
   const closeTimerRef = React.useRef<number | null>(null);
   const shakeTimerRef = React.useRef<number | null>(null);
@@ -174,6 +183,53 @@ export function LogActivityFab({
   }, [selectedType]);
 
   const selectedNotesIsEmpty = notes.trim().length === 0;
+
+  const filteredContacts = React.useMemo(() => {
+    if (!contactSearch || contactSearch.length < 1) return [];
+    const q = contactSearch.toLowerCase();
+    return contacts.items
+      .filter((c) => {
+        const fullName = `${c.firstName ?? ""} ${c.lastName ?? ""}`.toLowerCase();
+        return (
+          fullName.includes(q) ||
+          (c.phone ?? "").toLowerCase().includes(q) ||
+          (c.company ?? "").toLowerCase().includes(q)
+        );
+      })
+      .slice(0, 8);
+  }, [contacts.items, contactSearch]);
+
+  async function createQuickContactFromSearch() {
+    const raw = contactSearch.trim();
+    if (!raw || !profile?.uid) return;
+    const [firstName, ...rest] = raw.split(/\s+/);
+    const lastName = rest.join(" ");
+    const ref = doc(contactsCol);
+    const payload = {
+      firstName: firstName || "Contact",
+      lastName: lastName || "",
+      phone: "",
+      whatsapp: "",
+      email: "",
+      company: "",
+      source: "Quick Add",
+      assignedTo: profile.displayName || "",
+      assignedToUid: profile.uid || "",
+      tags: [],
+      notes: "",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      lastContactAt: serverTimestamp(),
+    } satisfies WithFieldValue<Contact>;
+    await setDoc(ref, payload);
+
+    const fullName = `${firstName || "Contact"} ${lastName}`.trim();
+    setSelectedContactId(ref.id);
+    setSelectedContactName(fullName);
+    setContactSearch(fullName);
+    setShowContactResults(false);
+    toast.success(`Created contact: ${fullName}`);
+  }
 
   async function submit() {
     if (!profile?.uid) return;
@@ -342,27 +398,81 @@ export function LogActivityFab({
             + Link to contact
           </button>
         ) : (
-          <div>
-            <Select
-              value={selectedContactId ?? ""}
-              onValueChange={(v) => {
-                setSelectedContactId(v || null);
-                setLinkExpanded(false);
+          <div className="space-y-2">
+            <Input
+              placeholder="Search by name or phone..."
+              value={contactSearch}
+              onChange={(e) => {
+                setContactSearch(e.target.value);
+                setShowContactResults(e.target.value.length > 0);
               }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select contact" />
-              </SelectTrigger>
-              <SelectContent>
-                {contacts.items
-                  .filter((c) => c.id)
-                  .map((c) => (
-                    <SelectItem key={c.id} value={c.id!}>
-                      {c.firstName} {c.lastName} {c.company ? `• ${c.company}` : ""}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && showContactResults && filteredContacts.length === 0) {
+                  e.preventDefault();
+                  void createQuickContactFromSearch();
+                }
+              }}
+              className="h-10"
+            />
+
+            {showContactResults ? (
+              <div className="max-h-48 overflow-y-auto rounded-xl border border-border bg-background shadow-lg">
+                {filteredContacts.slice(0, 5).map((contact) => (
+                  <button
+                    key={contact.id}
+                    onClick={() => {
+                      const name = `${contact.firstName} ${contact.lastName}`.trim();
+                      setSelectedContactId(contact.id);
+                      setSelectedContactName(name);
+                      setContactSearch(name);
+                      setShowContactResults(false);
+                    }}
+                    className="flex w-full items-center gap-3 border-b px-3 py-2.5 text-left last:border-0 hover:bg-muted"
+                  >
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                      {contact.firstName?.[0] ?? ""}
+                      {contact.lastName?.[0] ?? ""}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">
+                        {contact.firstName} {contact.lastName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {contact.phone || contact.company}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+                {contactSearch.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => void createQuickContactFromSearch()}
+                    className="w-full px-3 py-2.5 text-left text-sm text-primary hover:bg-muted"
+                  >
+                    Create contact: {contactSearch.trim()}
+                  </button>
+                )}
+              </div>
+            ) : null}
+
+            {selectedContactId && !showContactResults && (
+              <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/20 text-[10px] font-semibold text-primary">
+                  {selectedContactName[0] ?? ""}
+                </div>
+                <span className="flex-1 text-sm font-medium">{selectedContactName}</span>
+                <button
+                  onClick={() => {
+                    setSelectedContactId(null);
+                    setSelectedContactName("");
+                    setContactSearch("");
+                  }}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -397,6 +507,10 @@ export function LogActivityFab({
             setLinkExpanded(false);
             setTypeError(null);
             setTypeGridShaking(false);
+            setContactSearch("");
+            setShowContactResults(false);
+            setSelectedContactId(null);
+            setSelectedContactName("");
           }
         }}
       >

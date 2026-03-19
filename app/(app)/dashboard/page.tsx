@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { db } from "@/lib/firebase";
 import { useActivities, useContacts, useLeads, useTasks } from "@/lib/firestore-provider";
 import { tsToDate } from "@/lib/firestore";
-import { formatOMR } from "@/lib/utils";
+import { cn, formatOMR } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -31,17 +31,27 @@ import {
   AlertTriangle,
   Zap,
   Users,
+  ChevronRight,
 } from "lucide-react";
 import { AddContactModal } from "@/components/contacts/add-contact-modal";
 import { AddLeadModal } from "@/components/leads/add-lead-modal";
 import { LeadDetailDrawer } from "@/components/leads/lead-detail-drawer";
+import { ContactDetailDrawer } from "@/components/contacts/contact-detail-drawer";
 import { useLogActivityControl } from "@/lib/log-activity-control-context";
 import { DEFAULT_CADENCES } from "@/lib/cadence-templates";
 import type { Activity, Lead, Task } from "@/lib/types";
 
-function KpiCard({ label, value }: { label: string; value: React.ReactNode }) {
+function KpiCard({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <Card className="p-4">
+    <Card className={cn("p-4", className)}>
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="mt-2 text-2xl font-semibold tracking-tight">{value}</div>
     </Card>
@@ -113,6 +123,44 @@ function getActivityVisual(type: string) {
         iconBg: "bg-gray-100",
         iconColor: "text-gray-600",
       };
+  }
+}
+
+function getActivityTypeBorderClass(type: string) {
+  switch (type) {
+    case "call":
+    case "Call":
+    case "Contact Made":
+      return "border-l-4 border-l-blue-400";
+    case "site_visit":
+    case "site visit":
+    case "Site Visit":
+      return "border-l-4 border-l-green-400";
+    case "meeting":
+    case "Meeting":
+      return "border-l-4 border-l-amber-400";
+    case "note":
+    case "Note":
+      return "border-l-4 border-l-purple-400";
+    default:
+      return "border-l-4 border-l-border";
+  }
+}
+
+function leadStatusClass(status: Lead["status"]) {
+  switch (status) {
+    case "Initial Contact":
+      return "bg-blue-100 text-blue-700 border-blue-200";
+    case "Send Brochure":
+      return "bg-amber-100 text-amber-700 border-amber-200";
+    case "Arrange Visit":
+      return "bg-background text-purple-700 border-purple-400";
+    case "Won":
+      return "bg-green-100 text-green-700 border-green-200";
+    case "Lost":
+      return "bg-red-100 text-red-700 border-red-200";
+    default:
+      return "";
   }
 }
 
@@ -272,6 +320,7 @@ export default function DashboardPage() {
 
   const [leadDrawerOpen, setLeadDrawerOpen] = React.useState(false);
   const [leadDrawerId, setLeadDrawerId] = React.useState<string | null>(null);
+  const [contactDrawerId, setContactDrawerId] = React.useState<string | null>(null);
   const [overdueTaskId, setOverdueTaskId] = React.useState<string | null>(null);
   const [overdueOutcomeNote, setOverdueOutcomeNote] = React.useState("");
 
@@ -279,6 +328,11 @@ export default function DashboardPage() {
     if (!leadDrawerId) return null;
     return leads.items.find((l) => l.id === leadDrawerId) ?? null;
   }, [leads.items, leadDrawerId]);
+
+  const selectedContact = React.useMemo(() => {
+    if (!contactDrawerId) return null;
+    return contacts.items.find((c) => c.id === contactDrawerId) ?? null;
+  }, [contacts.items, contactDrawerId]);
 
   React.useEffect(() => {
     try {
@@ -359,7 +413,7 @@ export default function DashboardPage() {
       return bd - ad;
       });
 
-    return sorted.slice(0, 10);
+    return sorted.slice(0, 5);
   }, [activities.items, profile?.uid]);
 
   const todaySummary = React.useMemo(() => {
@@ -952,11 +1006,56 @@ export default function DashboardPage() {
       </Card>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <KpiCard label="Contacts Made today" value={kpis.contactsMadeToday} />
-        <KpiCard label="Site Visits today" value={kpis.siteVisitsToday} />
-        <KpiCard label="Follow Ups today" value={kpis.followUpsToday} />
-        <KpiCard label="Deals Won this month" value={kpis.dealsWonThisMonth} />
-        <KpiCard label="Pipeline value" value={formatOMR(kpis.pipelineValue)} />
+        <Link
+          href="/contacts"
+          className="block"
+        >
+          <KpiCard
+            label="Contacts Made today"
+            value={kpis.contactsMadeToday}
+            className="cursor-pointer transition-all hover:border-primary/30 hover:shadow-md"
+          />
+        </Link>
+        <Link
+          href="/contacts?activity=site_visit"
+          className="block"
+        >
+          <KpiCard
+            label="Site Visits today"
+            value={kpis.siteVisitsToday}
+            className="cursor-pointer transition-all hover:border-primary/30 hover:shadow-md"
+          />
+        </Link>
+        <Link
+          href="/tasks"
+          className="block"
+        >
+          <KpiCard
+            label="Follow Ups today"
+            value={kpis.followUpsToday}
+            className="cursor-pointer transition-all hover:border-primary/30 hover:shadow-md"
+          />
+        </Link>
+        <Link
+          href="/leads?status=won"
+          className="block"
+        >
+          <KpiCard
+            label="Deals Won this month"
+            value={kpis.dealsWonThisMonth}
+            className="cursor-pointer transition-all hover:border-primary/30 hover:shadow-md"
+          />
+        </Link>
+        <Link
+          href="/leads"
+          className="block"
+        >
+          <KpiCard
+            label="Pipeline value"
+            value={formatOMR(kpis.pipelineValue)}
+            className="cursor-pointer transition-all hover:border-primary/30 hover:shadow-md"
+          />
+        </Link>
       </div>
 
       <LeadDetailDrawer
@@ -965,6 +1064,13 @@ export default function DashboardPage() {
         onOpenChange={(o) => {
           setLeadDrawerOpen(o);
           if (!o) setLeadDrawerId(null);
+        }}
+      />
+      <ContactDetailDrawer
+        contact={selectedContact}
+        open={!!contactDrawerId}
+        onOpenChange={(o) => {
+          if (!o) setContactDrawerId(null);
         }}
       />
 
@@ -979,7 +1085,12 @@ export default function DashboardPage() {
 
       <div className="grid gap-3 lg:grid-cols-2">
         <Card className="p-4">
-          <div className="text-sm font-medium">Recent Activity</div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-sm font-medium">Recent Activity</div>
+            <Link href="/contacts" className="text-xs text-primary hover:underline">
+              View all →
+            </Link>
+          </div>
           <div className="mt-3">
             {recentActivities.length === 0 ? (
               <div className="text-sm text-muted-foreground">No recent activities.</div>
@@ -1016,9 +1127,14 @@ export default function DashboardPage() {
                       : "bg-gray-400";
 
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={activity.id}
-                      className="flex items-start gap-3 rounded-lg p-3 hover:bg-muted/50"
+                      onClick={() => {
+                        if (!activity.contactId) return;
+                        setContactDrawerId(activity.contactId);
+                      }}
+                      className={`group flex w-full items-start gap-3 rounded-lg p-3 text-left transition-colors ${activity.contactId ? "cursor-pointer hover:bg-muted/50" : "cursor-default"} ${getActivityTypeBorderClass(activity.type)}`}
                     >
                       <div className={`p-2 rounded-lg ${iconBg}`}>
                         <Icon className={`h-4 w-4 ${iconColor}`} />
@@ -1041,7 +1157,8 @@ export default function DashboardPage() {
                           className={`h-2 w-2 rounded-full mt-2 ${outcomeColor}`}
                         />
                       )}
-                    </div>
+                      <ChevronRight className="mt-1 h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                    </button>
                   );
                 })}
               </div>
@@ -1050,21 +1167,47 @@ export default function DashboardPage() {
         </Card>
 
         <Card className="p-4">
-          <div className="text-sm font-medium">My open leads</div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-sm font-medium">My open leads</div>
+            <Link href="/leads" className="text-xs text-primary hover:underline">
+              View all leads →
+            </Link>
+          </div>
           <div className="mt-3 space-y-2">
-            {myLeads.slice(0, 6).map((l) => (
-              <div key={l.id} className="flex items-center justify-between gap-2 rounded-lg border p-3">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium">
-                    {l.propertyType ?? "Lead"} {l.location ? `• ${l.location}` : ""}
+            {myLeads.slice(0, 5).map((l) => {
+              const c = l.contactId ? contactById.get(l.contactId) : null;
+              const contactName = c
+                ? `${c.firstName} ${c.lastName}`.trim()
+                : "Unknown contact";
+              return (
+                <button
+                  type="button"
+                  key={l.id}
+                  onClick={() => {
+                    setLeadDrawerId(l.id);
+                    setLeadDrawerOpen(true);
+                  }}
+                  className="flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/40"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-base font-semibold">
+                      {contactName}
+                    </div>
+                    <div className="truncate text-sm text-muted-foreground">
+                      {l.propertyType ?? "Lead"} {l.location ? `• ${l.location}` : ""}
+                    </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {typeof l.valueOmr === "number" ? formatOMR(l.valueOmr) : "—"}
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className={leadStatusClass(l.status)}>
+                      {l.status}
+                    </Badge>
+                    <div className="font-mono text-sm font-semibold">
+                      {typeof l.valueOmr === "number" ? formatOMR(l.valueOmr) : "—"}
+                    </div>
                   </div>
-                </div>
-                <Badge variant="secondary">{l.status}</Badge>
-              </div>
-            ))}
+                </button>
+              );
+            })}
             {myLeads.length === 0 && (
               <div className="text-sm text-muted-foreground">No open leads assigned to you.</div>
             )}
