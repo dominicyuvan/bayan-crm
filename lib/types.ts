@@ -115,20 +115,34 @@ export interface Activity {
 }
 
 export type TaskStatus = "pending" | "completed";
-export type TaskType = "follow_up" | "call" | "meeting" | "site_visit" | "admin";
+export type TaskType =
+  | "follow_up"
+  | "call"
+  | "meeting"
+  | "site_visit"
+  | "admin"
+  | "Call"
+  | "Note"
+  | "Site Visit"
+  | "Meeting";
 
 export interface Task {
   id?: string;
   type: TaskType;
   title: string;
   notes?: string;
-  contactId?: string;
-  leadId?: string;
+  contactId?: string | null;
+  contactName?: string | null;
+  leadId?: string | null;
   assignedToId: string;
+  assignedTo?: string;
+  assignedToUid?: string;
+  createdBy?: string;
+  createdByName?: string;
   dueAt: Timestamp;
   status: TaskStatus;
-  completedAt?: Timestamp;
-  outcome?: string;
+  completedAt?: Timestamp | null;
+  outcome?: string | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
