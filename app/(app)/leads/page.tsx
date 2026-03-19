@@ -28,27 +28,48 @@ import { toast } from "sonner";
 
 const STATUSES: Array<LeadStatus | "all"> = [
   "all",
-  "New",
-  "Contacted",
-  "Qualified",
+  "Initial Contact",
+  "Send Brochure",
+  "Arrange Visit",
   "Won",
   "Lost",
 ];
 const TEMPS: Array<LeadTemperature | "all"> = ["all", "cold", "warm", "hot"];
-const LEAD_STATUSES: LeadStatus[] = ["New", "Contacted", "Qualified", "Won", "Lost"];
+const LEAD_STATUSES: LeadStatus[] = [
+  "Initial Contact",
+  "Send Brochure",
+  "Arrange Visit",
+  "Won",
+  "Lost",
+];
 
 function statusBadgeVariant(status: LeadStatus) {
   switch (status) {
-    case "New":
+    case "Initial Contact":
       return "default";
-    case "Contacted":
+    case "Send Brochure":
       return "secondary";
-    case "Qualified":
+    case "Arrange Visit":
       return "outline";
     case "Won":
       return "default";
     case "Lost":
       return "destructive";
+  }
+}
+
+function statusBadgeClass(status: LeadStatus) {
+  switch (status) {
+    case "Initial Contact":
+      return "bg-blue-100 text-blue-700 border-blue-200";
+    case "Send Brochure":
+      return "bg-amber-100 text-amber-700 border-amber-200";
+    case "Arrange Visit":
+      return "bg-background text-purple-700 border-purple-400";
+    case "Won":
+      return "bg-green-100 text-green-700 border-green-200";
+    case "Lost":
+      return "bg-red-100 text-red-700 border-red-200";
   }
 }
 
@@ -120,9 +141,9 @@ export default function LeadsPage() {
       cold: "bg-slate-400",
     };
     const statusColors: Record<string, string> = {
-      New: "bg-blue-100 text-blue-700",
-      Contacted: "bg-amber-100 text-amber-700",
-      Qualified: "bg-purple-100 text-purple-700",
+      "Initial Contact": "bg-blue-100 text-blue-700",
+      "Send Brochure": "bg-amber-100 text-amber-700",
+      "Arrange Visit": "bg-purple-100 text-purple-700",
       Won: "bg-green-100 text-green-700",
       Lost: "bg-red-100 text-red-700",
     };
@@ -344,7 +365,10 @@ export default function LeadsPage() {
                               type="button"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <Badge variant={statusBadgeVariant(l.status)}>
+                              <Badge
+                                variant={statusBadgeVariant(l.status)}
+                                className={statusBadgeClass(l.status)}
+                              >
                                 {l.status}
                               </Badge>
                             </button>
@@ -422,7 +446,10 @@ export default function LeadsPage() {
                             setMobileStatusLeadId(l.id ?? null);
                           }}
                         >
-                          <Badge variant={statusBadgeVariant(l.status)}>
+                          <Badge
+                            variant={statusBadgeVariant(l.status)}
+                            className={statusBadgeClass(l.status)}
+                          >
                             {l.status}
                           </Badge>
                         </button>

@@ -2,10 +2,11 @@
 
 import * as React from "react";
 import { read, utils } from "xlsx";
-import { addDoc, serverTimestamp, type WithFieldValue } from "firebase/firestore";
+import { doc, serverTimestamp, type WithFieldValue, writeBatch } from "firebase/firestore";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import type { Contact } from "@/lib/types";
+import { db } from "@/lib/firebase";
 import { contactsCol } from "@/lib/firestore";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -84,6 +85,10 @@ export default function IntegrationsPage() {
       const rows = utils.sheet_to_json<Record<string, any>>(sheet);
 
       let imported = 0;
+      const BATCH_SIZE = 500;
+      let batch = writeBatch(db);
+      let ops = 0;
+
       for (const row of rows) {
         const nameVal = mapping.name ? String(row[mapping.name] ?? "") : "";
         const [firstName, ...restName] = nameVal.split(" ");
@@ -110,8 +115,20 @@ export default function IntegrationsPage() {
           lastContactAt: serverTimestamp(),
         } satisfies WithFieldValue<Contact>;
 
-        await addDoc(contactsCol, payload);
+        const ref = doc(contactsCol);
+        batch.set(ref, payload);
+        ops += 1;
         imported += 1;
+
+        if (ops >= BATCH_SIZE) {
+          await batch.commit();
+          batch = writeBatch(db);
+          ops = 0;
+        }
+      }
+
+      if (ops > 0) {
+        await batch.commit();
       }
 
       toast.success(`Imported ${imported} contacts`);

@@ -221,6 +221,7 @@ export default function DashboardPage() {
         return (
           t === "email" ||
           t === "note" ||
+          t === "Note" ||
           t === "whatsapp" ||
           t === "Email" ||
           t === "Follow Up" ||
@@ -379,6 +380,7 @@ export default function DashboardPage() {
         return (
           t === "email" ||
           t === "note" ||
+          t === "Note" ||
           t === "whatsapp" ||
           t === "Email" ||
           t === "Follow Up" ||
@@ -410,6 +412,65 @@ export default function DashboardPage() {
       const ownerUid = l.assignedToUid ?? l.assignedRepId ?? "";
       return !isAgent || ownerUid === profile?.uid;
     });
+
+    const shareBrochureActions = visibleLeads
+      .filter((l) => l.status === "Send Brochure")
+      .map((l) => {
+        const contactId = l.contactId;
+        if (!contactId) return null;
+
+        const relevantActivities = activities.items.filter((a) => {
+          const aContactId = (a as unknown as { contactId?: string | null }).contactId ?? null;
+          if (aContactId !== contactId) return false;
+          if (isAgent) {
+            const createdBy = (a as unknown as { createdBy?: string }).createdBy;
+            return createdBy === profile?.uid;
+          }
+          return true;
+        });
+
+        const latestActivityMs =
+          relevantActivities.reduce((max, a) => {
+            const t = a.createdAt?.toMillis?.() ?? 0;
+            return t > max ? t : max;
+          }, 0) || 0;
+
+        const baseMs =
+          latestActivityMs ||
+          tsToDate(l.lastContactAt ?? l.createdAt)?.getTime() ||
+          now.getTime();
+        const hoursNoActivity = (now.getTime() - baseMs) / (3600 * 1000);
+        if (hoursNoActivity <= 24) return null;
+
+        const contact = contactById.get(contactId) ?? null;
+        const name = contact
+          ? `${contact.firstName} ${contact.lastName}`
+          : l.propertyType ?? "Lead";
+
+        return {
+          key: `share-${l.id}`,
+          priority: 0,
+          kind: "share_brochure" as const,
+          tone: "amber" as const,
+          title: `Share Brochure — ${Math.floor(hoursNoActivity)}h no activity`,
+          subtitle: `${name}${l.location ? ` • ${l.location}` : ""}`,
+          leadId: l.id as string,
+          hoursNoActivity,
+        };
+      })
+      .filter(
+        (x): x is {
+          key: string;
+          priority: number;
+          kind: "share_brochure";
+          tone: "amber";
+          title: string;
+          subtitle: string;
+          leadId: string;
+          hoursNoActivity: number;
+        } => !!x
+      )
+      .sort((a, b) => b.hoursNoActivity - a.hoursNoActivity);
 
     const overdueTaskActions = visibleTasks
       .filter((t) => t.isOverdue)
@@ -536,6 +597,7 @@ export default function DashboardPage() {
       });
 
     const selected = [
+      ...shareBrochureActions,
       ...overdueTaskActions,
       ...coldLeadActions,
       ...dueTodayTaskActions,
@@ -547,7 +609,15 @@ export default function DashboardPage() {
       totalUrgent: selected.length,
       remainingSlots: Math.max(0, 3 - selected.length),
     };
-  }, [tasks.items, leads.items, isAgent, profile?.uid, todayStart, contactById]);
+  }, [
+    tasks.items,
+    leads.items,
+    activities.items,
+    isAgent,
+    profile?.uid,
+    todayStart,
+    contactById,
+  ]);
 
   if (loading) {
     return (
@@ -766,12 +836,17 @@ export default function DashboardPage() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3 min-w-0">
+                    {action.kind === "share_brochure" && (
+                      <div className="rounded-lg bg-amber-50 p-2 text-amber-600">
+                        <MessageSquare className="h-5 w-5" />
+                      </div>
+                    )}
                     {action.tone === "red" && (
                       <div className="rounded-lg bg-red-50 p-2 text-red-600">
                         <AlertTriangle className="h-5 w-5" />
                       </div>
                     )}
-                    {action.tone === "amber" && (
+                    {action.tone === "amber" && action.kind !== "share_brochure" && (
                       <div className="rounded-lg bg-amber-50 p-2 text-amber-600">
                         <Phone className="h-5 w-5" />
                       </div>

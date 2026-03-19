@@ -161,7 +161,7 @@ export function ContactDetailDrawer({
     ];
 
     if (profile?.role === "agent") {
-      clauses.push(where("repId", "==", profile.uid));
+      clauses.push(where("createdBy", "==", profile.uid));
     }
 
     clauses.push(orderBy("createdAt", "desc"));

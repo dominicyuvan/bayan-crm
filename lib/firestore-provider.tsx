@@ -11,6 +11,7 @@ import type {
   Lead,
   Task,
   TeamMember,
+  WithId,
 } from "@/lib/types";
 import {
   activitiesCol,
@@ -23,7 +24,6 @@ import {
   tsToDate,
 } from "@/lib/firestore";
 
-type WithId<T> = T & { id: string };
 type TaskComputed = WithId<Task> & { isOverdue: boolean };
 
 type CollectionState<T> = {
@@ -112,7 +112,7 @@ export function FirestoreProvider({ children }: { children: React.ReactNode }) {
     []
   );
   const activitiesQ = React.useMemo(
-    () => query(activitiesCol, orderBy("occurredAt", "desc")),
+    () => query(activitiesCol, orderBy("createdAt", "desc")),
     []
   );
   const tasksQ = React.useMemo(() => query(tasksCol, orderBy("dueAt", "asc")), []);

@@ -38,7 +38,12 @@ function computeStatsForMember(
   );
 
   const memberActivities = activities.filter(
-    (a) => a.repId === member.id && a.occurredAt.toDate() >= monthStart
+    (a) => {
+      const createdBy = (a.createdBy ?? a.repId ?? "") as string;
+      if (createdBy !== member.id) return false;
+      const date = a.createdAt?.toDate?.() ?? (a.occurredAt as any)?.toDate?.();
+      return !!date && date >= monthStart;
+    }
   );
 
   const activitiesThisMonth = memberActivities.length;

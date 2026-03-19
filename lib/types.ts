@@ -2,6 +2,18 @@ import type { Timestamp } from "firebase/firestore";
 
 export type UserRole = "admin" | "manager" | "agent";
 
+// Firestore "read" document types always have an `id` (the document id).
+// Keeping the base interfaces `id?` allows Firestore write payloads to omit `id`,
+// while components that read documents can use `WithId<T>` for stricter typing.
+export type WithId<T> = T & { id: string };
+export type ContactDoc = WithId<Contact>;
+export type LeadDoc = WithId<Lead>;
+export type ActivityDoc = WithId<Activity>;
+export type TaskDoc = WithId<Task>;
+export type ContractDoc = WithId<Contract>;
+export type TeamMemberDoc = WithId<TeamMember>;
+export type CadenceTemplateDoc = WithId<CadenceTemplate>;
+
 export interface UserProfile {
   id?: string;
   uid: string;
@@ -36,7 +48,13 @@ export interface Contact {
   lastContactAt?: Timestamp;
 }
 
-export type LeadStatus = "New" | "Contacted" | "Qualified" | "Won" | "Lost";
+// Real estate workflow stages
+export type LeadStatus =
+  | "Initial Contact"
+  | "Send Brochure"
+  | "Arrange Visit"
+  | "Won"
+  | "Lost";
 export type LeadTemperature = "cold" | "warm" | "hot";
 
 export interface Lead {
@@ -69,18 +87,31 @@ export type ActivityType =
   | "email"
   | "meeting"
   | "site_visit"
-  | "note";
+  | "note"
+  | "Call"
+  | "Note"
+  | "Site Visit"
+  | "Meeting";
 
 export interface Activity {
   id?: string;
   type: ActivityType;
-  title: string;
+  title?: string;
   notes?: string;
-  contactId?: string;
-  leadId?: string;
-  repId: string;
-  occurredAt: Timestamp;
+  contactId?: string | null;
+  contactName?: string | null;
+  leadId?: string | null;
+  outcome?: string | null;
+  createdBy?: string;
+  createdByName?: string;
   createdAt: Timestamp;
+  completedAt?: Timestamp;
+  dueAt?: Timestamp | null;
+  status?: string;
+
+  // Legacy fields (kept for backward compatibility with older docs)
+  repId?: string;
+  occurredAt?: Timestamp;
 }
 
 export type TaskStatus = "pending" | "completed";

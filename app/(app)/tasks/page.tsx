@@ -11,7 +11,6 @@ import { tsToDate } from "@/lib/firestore";
 import { AddTaskModal } from "@/components/tasks/add-task-modal";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -29,8 +28,9 @@ export default function TasksPage() {
   const isAgent = role === "agent";
 
   const [statusFilter, setStatusFilter] = React.useState<"all" | "pending" | "completed">("all");
-  const [outcomeNote, setOutcomeNote] = React.useState("");
-  const [completingId, setCompletingId] = React.useState<string | null>(null);
+  const [finalNoteTaskId, setFinalNoteTaskId] = React.useState<string | null>(null);
+  const [finalNote, setFinalNote] = React.useState("");
+  const [updatingTaskId, setUpdatingTaskId] = React.useState<string | null>(null);
 
   const today = React.useMemo(() => startOfDay(new Date()), []);
   const isMobile = useIsMobile();
@@ -66,22 +66,88 @@ export default function TasksPage() {
     return { overdue, today: todayGroup, upcoming, completed };
   }, [tasks, today]);
 
-  async function completeTask(taskId: string) {
-    setCompletingId(taskId);
+  async function updateLeadAfterQuickOutcome({
+    leadId,
+    nextLeadStatus,
+  }: {
+    leadId: string | undefined;
+    nextLeadStatus?: "Arrange Visit" | "Lost";
+  }) {
+    if (!leadId) return;
+    const base = {
+      lastContactAt: serverTimestamp() as unknown as Timestamp,
+      updatedAt: serverTimestamp() as unknown as Timestamp,
+    };
+    if (nextLeadStatus) {
+      await updateDoc(doc(db, "leads", leadId), {
+        ...base,
+        status: nextLeadStatus,
+      });
+      return;
+    }
+    await updateDoc(doc(db, "leads", leadId), base);
+  }
+
+  async function handleQuickOutcomeInterested(taskId: string, leadId?: string) {
+    setUpdatingTaskId(taskId);
     try {
-      const ref = doc(db, "tasks", taskId);
-      await updateDoc(ref, {
+      if (leadId) {
+        await updateLeadAfterQuickOutcome({ leadId, nextLeadStatus: "Arrange Visit" });
+      }
+      await updateDoc(doc(db, "tasks", taskId), {
         status: "completed",
-        completedAt: serverTimestamp(),
-        outcome: outcomeNote.trim(),
+        completedAt: serverTimestamp() as unknown as Timestamp,
+        outcome: "Interested",
         updatedAt: serverTimestamp() as unknown as Timestamp,
       });
-      toast.success("Task completed");
-      setOutcomeNote("");
+      toast.success("Marked Interested");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to complete task");
+      toast.error(err instanceof Error ? err.message : "Failed to update outcome");
     } finally {
-      setCompletingId(null);
+      setUpdatingTaskId(null);
+    }
+  }
+
+  async function handleQuickOutcomeBusy(taskId: string, leadId?: string) {
+    setUpdatingTaskId(taskId);
+    try {
+      if (leadId) {
+        await updateLeadAfterQuickOutcome({ leadId });
+      }
+
+      const dueAt = Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
+      await updateDoc(doc(db, "tasks", taskId), {
+        dueAt,
+        updatedAt: serverTimestamp() as unknown as Timestamp,
+      });
+      toast.success("Follow-up scheduled (+24h)");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to reschedule task");
+    } finally {
+      setUpdatingTaskId(null);
+    }
+  }
+
+  async function handleQuickOutcomeSaveNotInterested(taskId: string, leadId?: string) {
+    const note = finalNote.trim();
+    setUpdatingTaskId(taskId);
+    try {
+      if (leadId) {
+        await updateLeadAfterQuickOutcome({ leadId, nextLeadStatus: "Lost" });
+      }
+      await updateDoc(doc(db, "tasks", taskId), {
+        status: "completed",
+        completedAt: serverTimestamp() as unknown as Timestamp,
+        outcome: note ? note : "Not Interested",
+        updatedAt: serverTimestamp() as unknown as Timestamp,
+      });
+      toast.success("Marked Not Interested");
+      setFinalNoteTaskId(null);
+      setFinalNote("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save final note");
+    } finally {
+      setUpdatingTaskId(null);
     }
   }
 
@@ -128,21 +194,79 @@ export default function TasksPage() {
                     {lead.location ? `• ${lead.location}` : ""}
                   </div>
                 )}
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    disabled={completingId === t.id}
-                    onClick={() => completeTask(t.id)}
-                  >
-                    Complete
-                  </Button>
-                  {t.notes && (
-                    <div className="line-clamp-1 text-xs text-muted-foreground">
-                      {t.notes}
+                {t.status !== "completed" ? (
+                  <div className="mt-2 space-y-2">
+                    <div className="grid grid-cols-3 gap-2">
+                      <Button
+                        size="xs"
+                        onClick={() => void handleQuickOutcomeInterested(t.id, t.leadId)}
+                        disabled={updatingTaskId === t.id}
+                      >
+                        Interested
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={() => void handleQuickOutcomeBusy(t.id, t.leadId)}
+                        disabled={updatingTaskId === t.id}
+                      >
+                        Busy
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="destructive"
+                        onClick={() => {
+                          setFinalNoteTaskId(t.id);
+                          setFinalNote("");
+                        }}
+                        disabled={updatingTaskId === t.id}
+                      >
+                        Not Interested
+                      </Button>
                     </div>
-                  )}
-                </div>
+
+                    {finalNoteTaskId === t.id && (
+                      <div className="space-y-2">
+                        <Textarea
+                          rows={2}
+                          value={finalNote}
+                          placeholder="Final note for marking lost (optional)"
+                          onChange={(e) => setFinalNote(e.target.value)}
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            onClick={() => {
+                              setFinalNoteTaskId(null);
+                              setFinalNote("");
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            size="xs"
+                            onClick={() => void handleQuickOutcomeSaveNotInterested(t.id, t.leadId)}
+                            disabled={updatingTaskId === t.id}
+                          >
+                            Save & Close
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    {t.outcome ? (
+                      <div className="line-clamp-1 text-xs text-muted-foreground">
+                        Outcome: {t.outcome}
+                      </div>
+                    ) : null}
+                    {t.notes && (
+                      <div className="line-clamp-1 text-xs text-muted-foreground">{t.notes}</div>
+                    )}
+                  </div>
+                )}
               </Card>
             );
           })}
@@ -175,14 +299,9 @@ export default function TasksPage() {
         } ${isDone ? "opacity-50" : ""}`}
       >
         <div className="flex items-start gap-3">
-          <button
-            onClick={() => !isDone && onComplete(task.id)}
-            className={`mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 ${
-              isDone ? "border-primary bg-primary" : "border-muted-foreground"
-            }`}
-          >
-            {isDone && <Check className="h-3 w-3 text-white" />}
-          </button>
+          <div className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center">
+            {isDone ? <Check className="h-4 w-4 text-primary" /> : null}
+          </div>
           <div className="min-w-0 flex-1">
             <p
               className={`text-sm font-medium ${
@@ -213,6 +332,72 @@ export default function TasksPage() {
             </div>
           </div>
         </div>
+
+        {task.status !== "completed" ? (
+          <div className="mt-3 space-y-2">
+            <div className="flex gap-2">
+              <Button
+                size="xs"
+                onClick={() =>
+                  void handleQuickOutcomeInterested(task.id, task.leadId)
+                }
+                disabled={updatingTaskId === task.id}
+              >
+                Interested
+              </Button>
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={() => void handleQuickOutcomeBusy(task.id, task.leadId)}
+                disabled={updatingTaskId === task.id}
+              >
+                Busy
+              </Button>
+              <Button
+                size="xs"
+                variant="destructive"
+                onClick={() => {
+                  setFinalNoteTaskId(task.id);
+                  setFinalNote("");
+                }}
+                disabled={updatingTaskId === task.id}
+              >
+                Not Interested
+              </Button>
+            </div>
+            {finalNoteTaskId === task.id && (
+              <div className="space-y-2">
+                <Textarea
+                  rows={2}
+                  value={finalNote}
+                  placeholder="Final note (optional)"
+                  onChange={(e) => setFinalNote(e.target.value)}
+                />
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() => {
+                      setFinalNoteTaskId(null);
+                      setFinalNote("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="xs"
+                    onClick={() => void handleQuickOutcomeSaveNotInterested(task.id, task.leadId)}
+                    disabled={updatingTaskId === task.id}
+                  >
+                    Save & Close
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : task.outcome ? (
+          <div className="mt-3 text-xs text-muted-foreground">Outcome: {task.outcome}</div>
+        ) : null}
       </div>
     );
   }
@@ -261,15 +446,6 @@ export default function TasksPage() {
             </SelectContent>
           </Select>
         </div>
-        <div className="sm:ml-auto flex-1 max-w-xs">
-          <Label className="sr-only">Outcome note</Label>
-          <Textarea
-            rows={2}
-            placeholder="Outcome note for completed tasks (optional)"
-            value={outcomeNote}
-            onChange={(e) => setOutcomeNote(e.target.value)}
-          />
-        </div>
       </div>
 
       {isMobile ? (
@@ -278,7 +454,7 @@ export default function TasksPage() {
             <MobileTaskCard
               key={t.id}
               task={t}
-              onComplete={completeTask}
+              onComplete={() => undefined}
             />
           ))}
           {tasks.length === 0 && (

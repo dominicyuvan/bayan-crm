@@ -16,13 +16,36 @@ import { Textarea } from "@/components/ui/textarea";
 
 const TASK_TYPES: TaskType[] = ["follow_up", "call", "meeting", "site_visit", "admin"];
 
-export function AddTaskModal() {
+export type AddTaskModalProps = {
+  externalOpen?: boolean;
+  onExternalOpenChange?: (open: boolean) => void;
+  prefill?: Partial<{
+    type: TaskType;
+    title: string;
+    contactId: string;
+    leadId: string;
+    dueDate: string; // YYYY-MM-DD
+    dueTime: string; // HH:mm
+    assignedToId: string;
+    notes: string;
+  }>;
+};
+
+export function AddTaskModal({
+  externalOpen,
+  onExternalOpenChange,
+  prefill,
+}: AddTaskModalProps) {
   const { profile } = useAuth();
   const contacts = useContacts();
   const leads = useLeads();
   const team = useTeamMembers();
 
-  const [open, setOpen] = React.useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
+  const isControlled =
+    typeof externalOpen === "boolean" && typeof onExternalOpenChange === "function";
+  const open = isControlled ? externalOpen : uncontrolledOpen;
+
   const [submitting, setSubmitting] = React.useState(false);
 
   const [type, setType] = React.useState<TaskType>("follow_up");
@@ -48,6 +71,30 @@ export function AddTaskModal() {
     setAssignedToId(profile?.uid ?? "");
     setNotes("");
   }
+
+  const didApplyPrefillRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!open) {
+      didApplyPrefillRef.current = false;
+      return;
+    }
+    if (didApplyPrefillRef.current) return;
+    if (!prefill) {
+      didApplyPrefillRef.current = true;
+      return;
+    }
+
+    if (prefill.type) setType(prefill.type);
+    if (prefill.title) setTitle(prefill.title);
+    if (typeof prefill.contactId === "string") setContactId(prefill.contactId);
+    if (typeof prefill.leadId === "string") setLeadId(prefill.leadId);
+    if (typeof prefill.dueDate === "string") setDueDate(prefill.dueDate);
+    if (typeof prefill.dueTime === "string") setDueTime(prefill.dueTime);
+    if (typeof prefill.assignedToId === "string") setAssignedToId(prefill.assignedToId);
+    if (typeof prefill.notes === "string") setNotes(prefill.notes);
+
+    didApplyPrefillRef.current = true;
+  }, [open, prefill]);
 
   async function onSave() {
     if (!title.trim()) {
@@ -76,7 +123,8 @@ export function AddTaskModal() {
 
       await addDoc(tasksCol, payload);
       toast.success("Task added");
-      setOpen(false);
+      if (isControlled) onExternalOpenChange?.(false);
+      else setUncontrolledOpen(false);
       reset();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to add task");
@@ -89,13 +137,16 @@ export function AddTaskModal() {
     <Dialog
       open={open}
       onOpenChange={(v) => {
-        setOpen(v);
+        if (isControlled) onExternalOpenChange?.(v);
+        else setUncontrolledOpen(v);
         if (!v) reset();
       }}
     >
-      <DialogTrigger asChild>
-        <Button size="sm">Add Task</Button>
-      </DialogTrigger>
+      {!isControlled && (
+        <DialogTrigger asChild>
+          <Button size="sm">Add Task</Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Add task</DialogTitle>
@@ -194,7 +245,13 @@ export function AddTaskModal() {
             />
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (isControlled) onExternalOpenChange?.(false);
+                else setUncontrolledOpen(false);
+              }}
+            >
               Cancel
             </Button>
             <Button onClick={onSave} disabled={submitting}>

@@ -60,7 +60,10 @@ export default function ContactsPage() {
   const visibleActivities = React.useMemo(() => {
     if (!profile?.uid) return [];
     if (role !== "agent") return activities.items;
-    return activities.items.filter((a) => a.repId === profile.uid);
+    return activities.items.filter((a) => {
+      const createdBy = (a.createdBy ?? a.repId ?? "") as string;
+      return createdBy === profile.uid;
+    });
   }, [activities.items, role, profile?.uid]);
 
   const activityCountsByContactId = React.useMemo(() => {

@@ -67,12 +67,19 @@ export default function ReportsPage() {
       (l) => (l.assignedToUid ?? l.assignedRepId ?? "") === rep.uid
     );
     const repTasks = tasks.items.filter((t) => t.assignedToId === rep.uid);
-    const repActivities = activities.items.filter((a) => a.repId === rep.uid);
+    const repActivities = activities.items.filter((a) => {
+      const createdBy = (a.createdBy ?? a.repId ?? "") as string;
+      return createdBy === rep.uid;
+    });
 
     const inRangeLeads = repLeads.filter((l) => {
       const created = tsToDate(l.createdAt);
       return !!created && created >= fromDate && created < toDate;
     });
+
+    const initialContact = inRangeLeads.filter((l) => l.status === "Initial Contact");
+    const sendBrochure = inRangeLeads.filter((l) => l.status === "Send Brochure");
+    const arrangeVisit = inRangeLeads.filter((l) => l.status === "Arrange Visit");
 
     const won = inRangeLeads.filter((l) => l.status === "Won");
     const lost = inRangeLeads.filter((l) => l.status === "Lost");
@@ -85,7 +92,7 @@ export default function ReportsPage() {
     const wonValue = won.reduce((sum, l) => sum + (l.valueOmr ?? 0), 0);
 
     const inRangeActivities = repActivities.filter((a) => {
-      const d = tsToDate(a.occurredAt);
+      const d = tsToDate(a.createdAt) ?? tsToDate(a.occurredAt);
       return !!d && d >= fromDate && d < toDate;
     });
 
@@ -104,6 +111,9 @@ export default function ReportsPage() {
     return {
       rep,
       leads: inRangeLeads.length,
+      initialContact: initialContact.length,
+      sendBrochure: sendBrochure.length,
+      arrangeVisit: arrangeVisit.length,
       wonDeals: won.length,
       lostDeals: lost.length,
       pipeline,
@@ -117,7 +127,9 @@ export default function ReportsPage() {
 
   const chartData = rows.map((r) => ({
     name: r.rep.name,
-    New: r.leads,
+    "Initial Contact": r.initialContact,
+    "Send Brochure": r.sendBrochure,
+    "Arrange Visit": r.arrangeVisit,
     Won: r.wonDeals,
     Lost: r.lostDeals,
   }));
@@ -211,7 +223,9 @@ export default function ReportsPage() {
             <YAxis allowDecimals={false} />
             <Tooltip />
             <Legend />
-            <Bar dataKey="New" stackId="a" fill="var(--chart-1)" />
+            <Bar dataKey="Initial Contact" stackId="a" fill="var(--chart-1)" />
+            <Bar dataKey="Send Brochure" stackId="a" fill="var(--chart-2)" />
+            <Bar dataKey="Arrange Visit" stackId="a" fill="var(--chart-4)" />
             <Bar dataKey="Won" stackId="a" fill="var(--chart-3)" />
             <Bar dataKey="Lost" stackId="a" fill="var(--chart-5)" />
           </BarChart>

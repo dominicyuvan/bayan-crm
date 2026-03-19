@@ -38,7 +38,7 @@ export function AddLeadModal({
 }: AddLeadModalProps) {
   const { profile } = useAuth();
   const contacts = useContacts();
-  const status: LeadStatus = "New";
+  const status: LeadStatus = "Initial Contact";
 
   const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);

@@ -16,7 +16,7 @@ import {
 import { toast } from "sonner";
 import { db } from "@/lib/firebase";
 import type { Activity, Lead, LeadStatus } from "@/lib/types";
-import { formatOMR } from "@/lib/utils";
+import { formatOMR, whatsappLink } from "@/lib/utils";
 import { tsToDate } from "@/lib/firestore";
 import { useContacts } from "@/lib/firestore-provider";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -26,6 +26,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth-context";
+import { useLogActivityControl } from "@/lib/log-activity-control-context";
+import { AddTaskModal } from "@/components/tasks/add-task-modal";
 import {
   FileText,
   Mail,
@@ -35,7 +37,43 @@ import {
   Users,
 } from "lucide-react";
 
-const STATUSES: LeadStatus[] = ["New", "Contacted", "Qualified", "Won", "Lost"];
+const STATUSES: LeadStatus[] = [
+  "Initial Contact",
+  "Send Brochure",
+  "Arrange Visit",
+  "Won",
+  "Lost",
+];
+
+function statusBadgeClass(status: LeadStatus) {
+  switch (status) {
+    case "Initial Contact":
+      return "bg-blue-100 text-blue-700 border-blue-200";
+    case "Send Brochure":
+      return "bg-amber-100 text-amber-700 border-amber-200";
+    case "Arrange Visit":
+      return "bg-background text-purple-700 border-purple-400";
+    case "Won":
+      return "bg-green-100 text-green-700 border-green-200";
+    case "Lost":
+      return "bg-red-100 text-red-700 border-red-200";
+  }
+}
+
+function statusBadgeVariant(status: LeadStatus) {
+  switch (status) {
+    case "Initial Contact":
+      return "default";
+    case "Send Brochure":
+      return "secondary";
+    case "Arrange Visit":
+      return "outline";
+    case "Won":
+      return "default";
+    case "Lost":
+      return "destructive";
+  }
+}
 
 export function LeadDetailDrawer({
   lead,
@@ -48,12 +86,15 @@ export function LeadDetailDrawer({
 }) {
   const contacts = useContacts();
   const { profile } = useAuth();
+  const { setOpen: setLogActivityOpen, setPreselectedLeadId, setPreselectedContactId } = useLogActivityControl();
 
   const [saving, setSaving] = React.useState(false);
   const [propertyType, setPropertyType] = React.useState("");
   const [location, setLocation] = React.useState("");
   const [valueOmr, setValueOmr] = React.useState<string>("");
-  const [status, setStatus] = React.useState<LeadStatus>("New");
+  const [status, setStatus] = React.useState<LeadStatus>("Initial Contact");
+
+  const [scheduleOpen, setScheduleOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (!lead) return;
@@ -75,6 +116,23 @@ export function LeadDetailDrawer({
   const [activityItems, setActivityItems] = React.useState<
     Array<Activity & { id: string }>
   >([]);
+
+  const lastActivityDate = React.useMemo(() => {
+    if (!lead) return null;
+    if (activityItems.length > 0) {
+      const latest = activityItems.reduce((max, a) => {
+        const t = a.createdAt.toMillis();
+        return t > max ? t : max;
+      }, 0);
+      return latest ? new Date(latest) : null;
+    }
+    return tsToDate(lead.lastContactAt ?? lead.createdAt) ?? null;
+  }, [activityItems, lead]);
+
+  const isStepOverdue = React.useMemo(() => {
+    if (!lastActivityDate) return false;
+    return Date.now() - lastActivityDate.getTime() > 24 * 60 * 60 * 1000;
+  }, [lastActivityDate]);
 
   function truncateText(text: string, max = 60) {
     const t = (text ?? "").trim();
@@ -165,11 +223,11 @@ export function LeadDetailDrawer({
     if (!open || !lead?.id) return;
 
     const clauses: Parameters<typeof query>[1][] = [
-      where("leadId", "==", lead.id),
+      where("contactId", "==", lead.contactId),
     ];
 
     if (profile?.role === "agent") {
-      clauses.push(where("repId", "==", profile.uid));
+      clauses.push(where("createdBy", "==", profile.uid));
     }
 
     clauses.push(orderBy("createdAt", "desc"));
@@ -223,6 +281,112 @@ export function LeadDetailDrawer({
         {!lead ? null : (
           <div className="space-y-6 px-4 pb-4">
             <div className="rounded-xl border bg-card p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium">Suggested Next Action</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Based on the current stage
+                  </div>
+                </div>
+                <Badge
+                  variant={statusBadgeVariant(status)}
+                  className={statusBadgeClass(status)}
+                >
+                  {status}
+                </Badge>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                {status === "Initial Contact" ? (
+                  <Button
+                    className={`w-full justify-center ${isStepOverdue ? "animate-pulse" : ""}`}
+                    onClick={() => {
+                      if (!lead.id) return;
+                      setPreselectedLeadId(lead.id);
+                      setPreselectedContactId(contact?.id ?? null);
+                      setLogActivityOpen(true);
+                    }}
+                  >
+                    <Phone className="h-4 w-4 mr-2" />
+                    Call Lead
+                  </Button>
+                ) : null}
+
+                {status === "Send Brochure" ? (
+                  <Button
+                    variant="secondary"
+                    className={`w-full justify-center ${isStepOverdue ? "animate-pulse" : ""}`}
+                    asChild
+                  >
+                    <a
+                      href={
+                        contact?.whatsapp
+                          ? whatsappLink(contact.whatsapp)
+                          : contact?.phone
+                            ? whatsappLink(contact.phone)
+                            : "#"
+                      }
+                      onClick={(e) => {
+                        if (!contact?.whatsapp && !contact?.phone) {
+                          e.preventDefault();
+                          toast.error("No phone/WhatsApp number found for this contact");
+                        }
+                      }}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <MessageSquare className="h-4 w-4 mr-2" />
+                      Share Brochure via WhatsApp
+                    </a>
+                  </Button>
+                ) : null}
+
+                {status === "Arrange Visit" ? (
+                  <Button
+                    variant="outline"
+                    className={`w-full justify-center ${isStepOverdue ? "animate-pulse" : ""}`}
+                    onClick={() => {
+                      if (!lead.id) return;
+                      setScheduleOpen(true);
+                    }}
+                  >
+                    <MapPin className="h-4 w-4 mr-2" />
+                    Schedule Site Visit
+                  </Button>
+                ) : null}
+
+                {status === "Won" ? (
+                  <div className="rounded-lg bg-green-50 p-3 text-sm text-green-700">
+                    Deal closed as won. Nice work.
+                  </div>
+                ) : null}
+
+                {status === "Lost" ? (
+                  <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                    Deal marked lost. Log the final note in Tasks.
+                  </div>
+                ) : null}
+              </div>
+
+              {status === "Arrange Visit" ? (
+                <div className="mt-3">
+                  <AddTaskModal
+                    externalOpen={scheduleOpen}
+                    onExternalOpenChange={setScheduleOpen}
+                    prefill={{
+                      type: "site_visit",
+                      title: "Site Visit",
+                      contactId: contact?.id ?? "",
+                      leadId: lead.id ?? "",
+                      dueDate: new Date().toISOString().slice(0, 10),
+                      dueTime: "10:00",
+                    }}
+                  />
+                </div>
+              ) : null}
+            </div>
+
+            <div className="rounded-xl border bg-card p-4">
               <div className="text-sm font-medium">
                 {contact ? `${contact.firstName} ${contact.lastName}` : "—"}
               </div>
@@ -230,7 +394,12 @@ export function LeadDetailDrawer({
                 {contact?.company ?? "—"} • {contact?.phone ?? "—"}
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Badge variant="secondary">{lead.status}</Badge>
+                <Badge
+                  variant={statusBadgeVariant(status)}
+                  className={statusBadgeClass(status)}
+                >
+                  {status}
+                </Badge>
                 {typeof lead.valueOmr === "number" && (
                   <Badge variant="outline">{formatOMR(lead.valueOmr)}</Badge>
                 )}
