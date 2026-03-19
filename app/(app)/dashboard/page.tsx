@@ -186,23 +186,6 @@ function getActivityTypeBorderClass(type: string) {
   }
 }
 
-function leadStatusClass(status: Lead["status"]) {
-  switch (status) {
-    case "Initial Contact":
-      return "bg-blue-100 text-blue-700 border-blue-200";
-    case "Send Brochure":
-      return "bg-amber-100 text-amber-700 border-amber-200";
-    case "Arrange Visit":
-      return "bg-background text-purple-700 border-purple-400";
-    case "Won":
-      return "bg-green-100 text-green-700 border-green-200";
-    case "Lost":
-      return "bg-red-100 text-red-700 border-red-200";
-    default:
-      return "";
-  }
-}
-
 export default function DashboardPage() {
   const { profile } = useAuth();
   const { setOpen: setLogActivityOpen } = useLogActivityControl();
@@ -398,6 +381,7 @@ export default function DashboardPage() {
   const [optimisticallyDoneFollowUps, setOptimisticallyDoneFollowUps] = React.useState<Set<string>>(
     new Set()
   );
+  const followUpQueueRef = React.useRef<HTMLDivElement | null>(null);
 
   const selectedLead = React.useMemo(() => {
     if (!leadDrawerId) return null;
@@ -423,6 +407,14 @@ export default function DashboardPage() {
   const visibleFollowUpQueue = React.useMemo(
     () => followUpQueue.filter((f) => !optimisticallyDoneFollowUps.has(f.leadId)),
     [followUpQueue, optimisticallyDoneFollowUps]
+  );
+  const overdueCount = React.useMemo(
+    () => visibleFollowUpQueue.filter((f) => f.urgency === "overdue").length,
+    [visibleFollowUpQueue]
+  );
+  const todayCount = React.useMemo(
+    () => visibleFollowUpQueue.filter((f) => f.urgency === "today").length,
+    [visibleFollowUpQueue]
   );
 
   const followUpByLeadId = React.useMemo(() => {
@@ -1272,28 +1264,41 @@ export default function DashboardPage() {
         </Link>
         <button
           type="button"
-          onClick={() => setShowFollowUpQueue(true)}
+          onClick={() => {
+            setShowFollowUpQueue(true);
+            followUpQueueRef.current?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            });
+          }}
           className="block text-left"
         >
           <KpiCard
-            label="Due for Follow Up"
+            label={visibleFollowUpQueue.length > 0 ? "Need Follow Up" : "Follow Ups"}
             value={visibleFollowUpQueue.length}
             subtext={
-              visibleFollowUpQueue.filter((f) => f.urgency === "overdue").length > 0
-                ? `${visibleFollowUpQueue.filter((f) => f.urgency === "overdue").length} overdue`
-                : visibleFollowUpQueue.filter((f) => f.urgency === "today").length > 0
-                ? `${visibleFollowUpQueue.filter((f) => f.urgency === "today").length} due today`
-                : "All caught up"
+              overdueCount > 0
+                ? `${overdueCount} never contacted`
+                : todayCount > 0
+                ? `${todayCount} going cold`
+                : "All leads active ✓"
             }
             icon={RefreshCw}
             highlight={
-              visibleFollowUpQueue.filter((f) => f.urgency === "overdue").length > 0
+              overdueCount > 0
                 ? "red"
-                : visibleFollowUpQueue.filter((f) => f.urgency === "today").length > 0
+                : todayCount > 0
                 ? "amber"
                 : "green"
             }
-            className="cursor-pointer transition-all hover:border-primary/30 hover:shadow-md"
+            className={cn(
+              "cursor-pointer border-t-2 transition-all hover:border-primary/30 hover:shadow-md",
+              visibleFollowUpQueue.length > 5
+                ? "border-t-red-500"
+                : visibleFollowUpQueue.length > 0
+                ? "border-t-amber-500"
+                : "border-t-green-500"
+            )}
           />
         </button>
         <Link
@@ -1328,6 +1333,7 @@ export default function DashboardPage() {
 
       {visibleFollowUpQueue.length > 0 && (
         <Card
+          ref={followUpQueueRef}
           className={cn(
             "p-4 transition-all",
             showFollowUpQueue ? "border-primary/40" : ""
@@ -1335,8 +1341,9 @@ export default function DashboardPage() {
         >
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <div className="text-sm font-medium">Follow Up Queue</div>
-              <Badge variant="outline">{visibleFollowUpQueue.length}</Badge>
+              <div className="text-sm font-medium">
+                Follow Up Queue ({visibleFollowUpQueue.length})
+              </div>
             </div>
             {visibleFollowUpQueue.length > 5 ? (
               <Link href="/leads" className="text-xs text-primary hover:underline">
@@ -1398,10 +1405,13 @@ export default function DashboardPage() {
                   <button
                     type="button"
                     onClick={() => handleQuickFollowUp(item)}
-                    className="rounded-lg p-1.5 text-primary hover:bg-primary/10"
+                    className="rounded-lg px-2 py-1.5 text-xs font-medium text-primary hover:bg-primary/10"
                     title="Log follow up"
                   >
-                    <CheckCircle2 className="h-4 w-4" />
+                    <span className="inline-flex items-center gap-1">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Log Follow Up
+                    </span>
                   </button>
                 </div>
               </div>
@@ -1550,36 +1560,47 @@ export default function DashboardPage() {
           <div className="mt-3 space-y-2">
             {myLeads.slice(0, 5).map((l) => {
               const c = l.contactId ? contactById.get(l.contactId) : null;
-              const contactName = c
-                ? `${c.firstName} ${c.lastName}`.trim()
-                : "Unknown contact";
+              const contactName =
+                l.contactName ||
+                (c ? `${c.firstName} ${c.lastName}`.trim() : "Unknown Contact");
+              const secondaryText = l.company || l.propertyType || "No details yet";
+              const statusText = (l.status as string) || "";
               return (
-                <button
-                  type="button"
+                <div
                   key={l.id}
                   onClick={() => {
                     setLeadDrawerId(l.id);
                     setLeadDrawerOpen(true);
                   }}
-                  className="flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/40"
+                  className="flex cursor-pointer items-center justify-between rounded-xl border border-border/50 p-3 transition-colors hover:bg-muted/50"
                 >
-                  <div className="min-w-0">
-                    <div className="truncate text-base font-semibold">
-                      {contactName}
-                    </div>
-                    <div className="truncate text-sm text-muted-foreground">
-                      {l.propertyType ?? "Lead"} {l.location ? `• ${l.location}` : ""}
-                    </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">{contactName}</p>
+                    <p className="truncate text-xs text-muted-foreground">{secondaryText}</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className={leadStatusClass(l.status)}>
+                  <div className="ml-2 flex flex-shrink-0 items-center gap-2">
+                    <Badge
+                      className={cn(
+                        "text-[10px] capitalize",
+                        (statusText === "new" || statusText === "Initial Contact") &&
+                          "bg-blue-100 text-blue-700",
+                        (statusText === "contacted" || statusText === "Send Brochure") &&
+                          "bg-amber-100 text-amber-700",
+                        (statusText === "qualified" || statusText === "Arrange Visit") &&
+                          "bg-purple-100 text-purple-700"
+                      )}
+                    >
                       {l.status}
                     </Badge>
-                    <div className="font-mono text-sm font-semibold">
-                      {typeof l.valueOmr === "number" ? formatOMR(l.valueOmr) : "—"}
-                    </div>
+                    {(l.value ?? l.valueOmr ?? 0) > 0 ? (
+                      <span className="text-xs font-medium font-mono">
+                        {(l.value ?? l.valueOmr ?? 0).toLocaleString("en-US", {
+                          minimumFractionDigits: 0,
+                        })}
+                      </span>
+                    ) : null}
                   </div>
-                </button>
+                </div>
               );
             })}
             {myLeads.length === 0 && (

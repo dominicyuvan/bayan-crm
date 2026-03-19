@@ -30,100 +30,79 @@ export function buildFollowUpQueue(
   const items: FollowUpItem[] = [];
 
   const relevantLeads = leads.filter((l) => {
+    // Skip closed leads
     if (isWonOrLost(l.status)) return false;
+    // Agents only see their own leads
     if (userRole === "agent" && (l.assignedToUid ?? "") !== userId) return false;
     return true;
   });
 
   for (const lead of relevantLeads) {
-    if (!lead.id || !lead.contactId) continue;
-
-    const leadAny = lead as unknown as {
-      lastContactedAt?: Lead["lastContactAt"];
-      contactName?: string;
-      contactPhone?: string;
-      company?: string;
-      value?: number;
-    };
-
-    const lastContact =
-      tsToDate(leadAny.lastContactedAt) ??
-      tsToDate(lead.lastContactAt) ??
-      null;
-
+    const lastContact = tsToDate(lead.lastContactedAt) ?? null;
     const daysSince = lastContact
       ? Math.floor((now.getTime() - lastContact.getTime()) / 86400000)
       : null;
 
-    const leadActivities = activities.filter((a) => a.leadId === lead.id);
-    const latestActivity = leadActivities
-      .map((a) => tsToDate(a.createdAt))
-      .filter((d): d is Date => !!d)
-      .sort((a, b) => b.getTime() - a.getTime())[0];
-
-    const effectiveDaysSince = latestActivity
-      ? Math.floor((now.getTime() - latestActivity.getTime()) / 86400000)
-      : daysSince;
-
-    // Never contacted
-    if (!lastContact && !latestActivity) {
+    // Never contacted — always show
+    if (!lastContact) {
       items.push({
-        leadId: lead.id,
-        contactId: lead.contactId,
-        contactName: leadAny.contactName || "Unknown contact",
-        contactPhone: leadAny.contactPhone || "",
-        company: leadAny.company || "",
-        propertyType: lead.propertyType || "Lead",
+        leadId: lead.id || "",
+        contactId: lead.contactId || "",
+        contactName: lead.contactName || "Unknown",
+        contactPhone: lead.contactPhone || "",
+        company: lead.company || "",
+        propertyType: lead.propertyType || "",
         daysSinceContact: null,
-        urgency: "overdue",
+        urgency: "overdue" as const,
         reason: "Never contacted",
         leadStatus: lead.status,
-        leadValue: leadAny.value ?? lead.valueOmr ?? 0,
+        leadValue: lead.value || 0,
       });
       continue;
     }
 
     // Overdue: > 14 days
-    if (effectiveDaysSince && effectiveDaysSince > 14) {
+    if (daysSince && daysSince > 14) {
       items.push({
-        leadId: lead.id,
-        contactId: lead.contactId,
-        contactName: leadAny.contactName || "Unknown contact",
-        contactPhone: leadAny.contactPhone || "",
-        company: leadAny.company || "",
-        propertyType: lead.propertyType || "Lead",
-        daysSinceContact: effectiveDaysSince,
-        urgency: effectiveDaysSince > 21 ? "overdue" : "today",
-        reason: `${effectiveDaysSince} days since last contact`,
+        leadId: lead.id || "",
+        contactId: lead.contactId || "",
+        contactName: lead.contactName || "Unknown",
+        contactPhone: lead.contactPhone || "",
+        company: lead.company || "",
+        propertyType: lead.propertyType || "",
+        daysSinceContact: daysSince,
+        urgency: "overdue" as const,
+        reason: `${daysSince} days no contact`,
         leadStatus: lead.status,
-        leadValue: leadAny.value ?? lead.valueOmr ?? 0,
+        leadValue: lead.value || 0,
       });
       continue;
     }
 
-    // Due soon: 7-14 days
-    if (effectiveDaysSince && effectiveDaysSince >= 7) {
+    // 7-14 days — due today
+    if (daysSince && daysSince >= 7) {
       items.push({
-        leadId: lead.id,
-        contactId: lead.contactId,
-        contactName: leadAny.contactName || "Unknown contact",
-        contactPhone: leadAny.contactPhone || "",
-        company: leadAny.company || "",
-        propertyType: lead.propertyType || "Lead",
-        daysSinceContact: effectiveDaysSince,
-        urgency: "soon",
-        reason: `${effectiveDaysSince} days since last contact`,
+        leadId: lead.id || "",
+        contactId: lead.contactId || "",
+        contactName: lead.contactName || "Unknown",
+        contactPhone: lead.contactPhone || "",
+        company: lead.company || "",
+        propertyType: lead.propertyType || "",
+        daysSinceContact: daysSince,
+        urgency: "today" as const,
+        reason: `${daysSince} days no contact`,
         leadStatus: lead.status,
-        leadValue: leadAny.value ?? lead.valueOmr ?? 0,
+        leadValue: lead.value || 0,
       });
     }
   }
 
-  // Sort: overdue first, then today, then soon; within group by longest first.
+  // Sort: overdue first, then today, then soon
+  // Within each group: sort by daysSinceContact descending (longest first)
   return items.sort((a, b) => {
-    const urgencyOrder = { overdue: 0, today: 1, soon: 2 };
-    if (urgencyOrder[a.urgency] !== urgencyOrder[b.urgency]) {
-      return urgencyOrder[a.urgency] - urgencyOrder[b.urgency];
+    const order = { overdue: 0, today: 1, soon: 2 };
+    if (order[a.urgency] !== order[b.urgency]) {
+      return order[a.urgency] - order[b.urgency];
     }
     const aDays = a.daysSinceContact ?? 999;
     const bDays = b.daysSinceContact ?? 999;
