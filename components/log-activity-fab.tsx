@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Timestamp, addDoc, serverTimestamp, type WithFieldValue } from "firebase/firestore";
 import { toast } from "sonner";
-import { PlusIcon } from "lucide-react";
+import { Plus } from "lucide-react";
 import { activitiesCol, tasksCol } from "@/lib/firestore";
 import { useAuth } from "@/lib/auth-context";
 import { useContacts, useLeads, useTeamMembers } from "@/lib/firestore-provider";
@@ -214,28 +214,42 @@ export function LogActivityFab() {
 
   if (isMobile) {
     return (
-      <Drawer open={open} onOpenChange={(v) => (setOpen(v), !v && reset())}>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>
-              {mode === "activity" ? "Log Activity" : "Schedule Task"}
-            </DrawerTitle>
-          </DrawerHeader>
-          <div className="px-4 pb-4">{sheetBody}</div>
-        </DrawerContent>
-      </Drawer>
+      <>
+        <Drawer open={open} onOpenChange={(v) => (setOpen(v), !v && reset())}>
+          <DrawerContent>
+            <DrawerHeader>
+              <DrawerTitle>
+                {mode === "activity" ? "Log Activity" : "Schedule Task"}
+              </DrawerTitle>
+            </DrawerHeader>
+            <div className="px-4 pb-4">{sheetBody}</div>
+          </DrawerContent>
+        </Drawer>
+      </>
     );
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => (setOpen(v), !v && reset())}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Quick add</DialogTitle>
-        </DialogHeader>
-        {sheetBody}
-      </DialogContent>
-    </Dialog>
+    <>
+      {/* Floating button - desktop and tablet only */}
+      <Button
+        onClick={() => setOpen(true)}
+        className="fixed bottom-6 right-6 z-50 hidden h-14 gap-2 rounded-full px-6 shadow-lg hover:shadow-xl md:flex"
+      >
+        <Plus className="h-5 w-5" />
+        <span>Log Activity</span>
+      </Button>
+
+      {/* Desktop dialog */}
+      <Dialog open={open} onOpenChange={(v) => (setOpen(v), !v && reset())}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Quick add</DialogTitle>
+          </DialogHeader>
+          {sheetBody}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
