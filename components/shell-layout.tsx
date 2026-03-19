@@ -37,7 +37,7 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
           </main>
         </div>
       </div>
-      <MobileNav />
+      <MobileNav onLogActivity={() => {}} />
     </div>
   );
 }

@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Toaster } from "@/components/ui/sonner";
 import { useAuth } from "@/lib/auth-context";
 import { ShellLayout } from "@/components/shell-layout";
-import { LogActivityProvider } from "@/lib/log-activity-context";
 import { LogActivityFab } from "@/components/log-activity-fab";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -35,11 +34,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   return (
-    <LogActivityProvider>
+    <>
       <ShellLayout>{children}</ShellLayout>
       <LogActivityFab />
       <Toaster richColors closeButton />
-    </LogActivityProvider>
+    </>
   );
 }
 
