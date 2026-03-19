@@ -31,6 +31,7 @@ import {
   Mail,
   MapPin,
   MessageSquare,
+  MessageCircle,
   Phone,
   Check,
   Clock,
@@ -39,6 +40,8 @@ import {
   Users,
   ChevronRight,
   Sparkles,
+  RefreshCw,
+  CheckCircle2,
 } from "lucide-react";
 import { AddContactModal } from "@/components/contacts/add-contact-modal";
 import { AddLeadModal } from "@/components/leads/add-lead-modal";
@@ -48,20 +51,47 @@ import { useLogActivityControl } from "@/lib/log-activity-control-context";
 import { DEFAULT_CADENCES } from "@/lib/cadence-templates";
 import type { Activity, Lead, Task } from "@/lib/types";
 import { generateTopLeads } from "@/lib/lead-generator";
+import {
+  buildFollowUpQueue,
+  type FollowUpItem,
+} from "@/lib/follow-up-engine";
+import { QuickFollowUpDialog } from "@/components/follow-up/quick-follow-up-dialog";
 
 function KpiCard({
   label,
   value,
   className,
+  subtext,
+  icon: Icon,
+  highlight,
 }: {
   label: string;
   value: React.ReactNode;
   className?: string;
+  subtext?: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  highlight?: "red" | "amber" | "green";
 }) {
   return (
     <Card className={cn("p-4", className)}>
-      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs text-muted-foreground">{label}</div>
+        {Icon ? <Icon className="h-4 w-4 text-muted-foreground" /> : null}
+      </div>
       <div className="mt-2 text-2xl font-semibold tracking-tight">{value}</div>
+      {subtext ? (
+        <div
+          className={cn(
+            "mt-1 text-xs",
+            highlight === "red" && "text-red-600",
+            highlight === "amber" && "text-amber-600",
+            highlight === "green" && "text-green-600",
+            !highlight && "text-muted-foreground"
+          )}
+        >
+          {subtext}
+        </div>
+      ) : null}
     </Card>
   );
 }
@@ -332,6 +362,12 @@ export default function DashboardPage() {
   const [overdueTaskId, setOverdueTaskId] = React.useState<string | null>(null);
   const [overdueOutcomeNote, setOverdueOutcomeNote] = React.useState("");
   const [isGenerating, setIsGenerating] = React.useState(false);
+  const [showFollowUpQueue, setShowFollowUpQueue] = React.useState(false);
+  const [quickFollowUpItem, setQuickFollowUpItem] = React.useState<FollowUpItem | null>(null);
+  const [showQuickLog, setShowQuickLog] = React.useState(false);
+  const [optimisticallyDoneFollowUps, setOptimisticallyDoneFollowUps] = React.useState<Set<string>>(
+    new Set()
+  );
 
   const selectedLead = React.useMemo(() => {
     if (!leadDrawerId) return null;
@@ -342,6 +378,33 @@ export default function DashboardPage() {
     if (!contactDrawerId) return null;
     return contacts.items.find((c) => c.id === contactDrawerId) ?? null;
   }, [contacts.items, contactDrawerId]);
+
+  const followUpQueue = React.useMemo(
+    () =>
+      buildFollowUpQueue(
+        leads.items,
+        activities.items,
+        profile?.uid || "",
+        profile?.role || "agent"
+      ),
+    [leads.items, activities.items, profile?.uid, profile?.role]
+  );
+
+  const visibleFollowUpQueue = React.useMemo(
+    () => followUpQueue.filter((f) => !optimisticallyDoneFollowUps.has(f.leadId)),
+    [followUpQueue, optimisticallyDoneFollowUps]
+  );
+
+  const followUpByLeadId = React.useMemo(() => {
+    const map = new Map<string, FollowUpItem>();
+    for (const item of visibleFollowUpQueue) map.set(item.leadId, item);
+    return map;
+  }, [visibleFollowUpQueue]);
+
+  function handleQuickFollowUp(item: FollowUpItem) {
+    setQuickFollowUpItem(item);
+    setShowQuickLog(true);
+  }
 
   React.useEffect(() => {
     try {
@@ -687,6 +750,32 @@ export default function DashboardPage() {
         };
       });
 
+    const followUpOverdueActions = visibleFollowUpQueue
+      .filter((f) => f.urgency === "overdue")
+      .slice(0, 5)
+      .map((f) => ({
+        key: `followup-overdue-${f.leadId}`,
+        priority: 2,
+        kind: "followup_overdue" as const,
+        tone: "red" as const,
+        title: `Follow up ${f.contactName}`,
+        subtitle: f.reason,
+        leadId: f.leadId,
+      }));
+
+    const followUpTodayActions = visibleFollowUpQueue
+      .filter((f) => f.urgency === "today")
+      .slice(0, 5)
+      .map((f) => ({
+        key: `followup-today-${f.leadId}`,
+        priority: 3,
+        kind: "followup_today" as const,
+        tone: "amber" as const,
+        title: `Follow up ${f.contactName}`,
+        subtitle: f.reason,
+        leadId: f.leadId,
+      }));
+
     const dueTodayTaskActions = visibleTasks
       .filter((t) => {
         if (t.status === "completed") return false;
@@ -752,10 +841,12 @@ export default function DashboardPage() {
       });
 
     const selected = [
-      ...shareBrochureActions,
       ...overdueTaskActions,
-      ...coldLeadActions,
+      ...followUpOverdueActions,
+      ...followUpTodayActions,
       ...dueTodayTaskActions,
+      ...shareBrochureActions,
+      ...coldLeadActions,
       ...cadenceLeadActions,
     ].slice(0, 3);
 
@@ -772,6 +863,7 @@ export default function DashboardPage() {
     profile?.uid,
     todayStart,
     contactById,
+    visibleFollowUpQueue,
   ]);
 
   if (loading) {
@@ -1089,6 +1181,18 @@ export default function DashboardPage() {
                       >
                         Do it →
                       </Button>
+                    ) : action.kind === "followup_overdue" || action.kind === "followup_today" ? (
+                      <Button
+                        size="sm"
+                        className="h-8"
+                        onClick={() => {
+                          const item = followUpByLeadId.get(action.leadId);
+                          if (!item) return;
+                          handleQuickFollowUp(item);
+                        }}
+                      >
+                        Do it →
+                      </Button>
                     ) : (
                       <Button
                         size="sm"
@@ -1136,16 +1240,32 @@ export default function DashboardPage() {
             className="cursor-pointer transition-all hover:border-primary/30 hover:shadow-md"
           />
         </Link>
-        <Link
-          href="/tasks"
-          className="block"
+        <button
+          type="button"
+          onClick={() => setShowFollowUpQueue(true)}
+          className="block text-left"
         >
           <KpiCard
-            label="Follow Ups today"
-            value={kpis.followUpsToday}
+            label="Due for Follow Up"
+            value={visibleFollowUpQueue.length}
+            subtext={
+              visibleFollowUpQueue.filter((f) => f.urgency === "overdue").length > 0
+                ? `${visibleFollowUpQueue.filter((f) => f.urgency === "overdue").length} overdue`
+                : visibleFollowUpQueue.filter((f) => f.urgency === "today").length > 0
+                ? `${visibleFollowUpQueue.filter((f) => f.urgency === "today").length} due today`
+                : "All caught up"
+            }
+            icon={RefreshCw}
+            highlight={
+              visibleFollowUpQueue.filter((f) => f.urgency === "overdue").length > 0
+                ? "red"
+                : visibleFollowUpQueue.filter((f) => f.urgency === "today").length > 0
+                ? "amber"
+                : "green"
+            }
             className="cursor-pointer transition-all hover:border-primary/30 hover:shadow-md"
           />
-        </Link>
+        </button>
         <Link
           href="/leads?status=won"
           className="block"
@@ -1168,6 +1288,90 @@ export default function DashboardPage() {
         </Link>
       </div>
 
+      {visibleFollowUpQueue.length > 0 && (
+        <Card
+          className={cn(
+            "p-4 transition-all",
+            showFollowUpQueue ? "border-primary/40" : ""
+          )}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="text-sm font-medium">Follow Up Queue</div>
+              <Badge variant="outline">{visibleFollowUpQueue.length}</Badge>
+            </div>
+            {visibleFollowUpQueue.length > 5 ? (
+              <Link href="/leads" className="text-xs text-primary hover:underline">
+                View all {visibleFollowUpQueue.length} →
+              </Link>
+            ) : null}
+          </div>
+
+          <div className="mt-3 space-y-2">
+            {visibleFollowUpQueue.slice(0, 5).map((item) => (
+              <div
+                key={`${item.leadId}-${item.reason}`}
+                className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 transition-colors hover:bg-muted/50"
+              >
+                <div
+                  className={cn(
+                    "h-2 w-2 flex-shrink-0 rounded-full",
+                    item.urgency === "overdue"
+                      ? "bg-red-500"
+                      : item.urgency === "today"
+                      ? "bg-amber-500"
+                      : "bg-blue-400"
+                  )}
+                />
+
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{item.contactName}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {item.propertyType} · {item.reason}
+                  </p>
+                </div>
+
+                <span
+                  className={cn(
+                    "flex-shrink-0 rounded-full px-2 py-1 text-xs font-medium",
+                    item.urgency === "overdue"
+                      ? "bg-red-100 text-red-700"
+                      : item.urgency === "today"
+                      ? "bg-amber-100 text-amber-700"
+                      : "bg-blue-100 text-blue-700"
+                  )}
+                >
+                  {item.daysSinceContact ? `${item.daysSinceContact}d` : "New"}
+                </span>
+
+                <div className="flex flex-shrink-0 items-center gap-1">
+                  {item.contactPhone ? (
+                    <a
+                      href={`https://wa.me/${item.contactPhone.replace(/\D/g, "")}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="rounded-lg p-1.5 text-green-600 hover:bg-green-50"
+                      title="WhatsApp"
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                    </a>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => handleQuickFollowUp(item)}
+                    className="rounded-lg p-1.5 text-primary hover:bg-primary/10"
+                    title="Log follow up"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       <LeadDetailDrawer
         lead={selectedLead}
         open={leadDrawerOpen}
@@ -1181,6 +1385,28 @@ export default function DashboardPage() {
         open={!!contactDrawerId}
         onOpenChange={(o) => {
           if (!o) setContactDrawerId(null);
+        }}
+      />
+      <QuickFollowUpDialog
+        open={showQuickLog}
+        onOpenChange={setShowQuickLog}
+        item={quickFollowUpItem}
+        userProfile={
+          profile ? { uid: profile.uid, displayName: profile.displayName } : null
+        }
+        onBeforeSubmit={(item) => {
+          setOptimisticallyDoneFollowUps((prev) => {
+            const next = new Set(prev);
+            next.add(item.leadId);
+            return next;
+          });
+        }}
+        onErrorRevert={(item) => {
+          setOptimisticallyDoneFollowUps((prev) => {
+            const next = new Set(prev);
+            next.delete(item.leadId);
+            return next;
+          });
         }}
       />
 

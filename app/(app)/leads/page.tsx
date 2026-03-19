@@ -23,9 +23,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { tsToDate } from "@/lib/firestore";
+import type { FollowUpItem } from "@/lib/follow-up-engine";
+import { QuickFollowUpDialog } from "@/components/follow-up/quick-follow-up-dialog";
 
 const STATUSES: Array<LeadStatus | "all"> = [
   "all",
@@ -106,6 +108,8 @@ export default function LeadsPage() {
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [mobileStatusLeadId, setMobileStatusLeadId] = React.useState<string | null>(null);
   const [bannerDismissed, setBannerDismissed] = React.useState(false);
+  const [quickFollowUpItem, setQuickFollowUpItem] = React.useState<FollowUpItem | null>(null);
+  const [showQuickLog, setShowQuickLog] = React.useState(false);
   const selected = React.useMemo(
     () => leads.items.find((l) => l.id === selectedId) ?? null,
     [leads.items, selectedId]
@@ -121,6 +125,31 @@ export default function LeadsPage() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to update lead");
     }
+  }
+
+  function handleQuickFollowUpFromLead(lead: (typeof leads.items)[number]) {
+    const c = contacts.items.find((cc) => cc.id === lead.contactId);
+    const last = getLeadLastContactDate(lead);
+    const daysSince = last
+      ? Math.floor((Date.now() - last.getTime()) / 86400000)
+      : null;
+    const item: FollowUpItem = {
+      leadId: lead.id || "",
+      contactId: lead.contactId || "",
+      contactName:
+        (lead as any).contactName ||
+        (c ? `${c.firstName} ${c.lastName}`.trim() : "Unknown contact"),
+      contactPhone: (lead as any).contactPhone || c?.phone || c?.whatsapp || "",
+      company: (lead as any).company || c?.company || "",
+      propertyType: lead.propertyType || "Lead",
+      daysSinceContact: daysSince,
+      urgency: daysSince && daysSince > 21 ? "overdue" : daysSince && daysSince > 14 ? "today" : "soon",
+      reason: daysSince ? `${daysSince} days since last contact` : "Never contacted",
+      leadStatus: lead.status,
+      leadValue: (lead as any).value || lead.valueOmr || 0,
+    };
+    setQuickFollowUpItem(item);
+    setShowQuickLog(true);
   }
 
   const filtered = React.useMemo(() => {
@@ -473,7 +502,20 @@ export default function LeadsPage() {
                       <TableCell className="text-right">
                         <Button
                           size="sm"
+                          variant="ghost"
+                          className="h-7 gap-1 px-2 text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleQuickFollowUpFromLead(l);
+                          }}
+                        >
+                          <RefreshCw className="h-3 w-3" />
+                          Follow Up
+                        </Button>
+                        <Button
+                          size="sm"
                           variant="outline"
+                          className="ml-2"
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedId(l.id);
@@ -572,6 +614,19 @@ export default function LeadsPage() {
                       {typeof l.valueOmr === "number" ? formatOMR(l.valueOmr) : "—"}
                     </div>
                   </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="mt-3 w-full gap-1"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleQuickFollowUpFromLead(l);
+                    }}
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    Follow Up
+                  </Button>
                 </button>
               );
             })}
@@ -588,6 +643,12 @@ export default function LeadsPage() {
         lead={selected}
         open={!!selectedId}
         onOpenChange={(o) => !o && setSelectedId(null)}
+      />
+      <QuickFollowUpDialog
+        open={showQuickLog}
+        onOpenChange={setShowQuickLog}
+        item={quickFollowUpItem}
+        userProfile={profile ? { uid: profile.uid, displayName: profile.displayName } : null}
       />
     </div>
   );

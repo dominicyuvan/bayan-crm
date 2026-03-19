@@ -88,6 +88,7 @@ export type ActivityType =
   | "meeting"
   | "site_visit"
   | "note"
+  | "Follow Up"
   | "Call"
   | "Note"
   | "Site Visit"
@@ -117,6 +118,7 @@ export interface Activity {
 export type TaskStatus = "pending" | "completed";
 export type TaskType =
   | "follow_up"
+  | "Follow Up"
   | "call"
   | "meeting"
   | "site_visit"
