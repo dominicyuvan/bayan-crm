@@ -1,19 +1,39 @@
 "use client";
 
 import * as React from "react";
-import { Timestamp, doc, serverTimestamp, updateDoc } from "firebase/firestore";
+import {
+  Timestamp,
+  collection,
+  doc,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  updateDoc,
+  where,
+} from "firebase/firestore";
 import { toast } from "sonner";
 import { db } from "@/lib/firebase";
-import type { Lead, LeadStatus } from "@/lib/types";
+import type { Activity, Lead, LeadStatus } from "@/lib/types";
 import { formatOMR } from "@/lib/utils";
 import { tsToDate } from "@/lib/firestore";
-import { useActivities, useContacts } from "@/lib/firestore-provider";
+import { useContacts } from "@/lib/firestore-provider";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/lib/auth-context";
+import {
+  FileText,
+  Mail,
+  MapPin,
+  MessageSquare,
+  Phone,
+  Users,
+} from "lucide-react";
 
 const STATUSES: LeadStatus[] = ["New", "Contacted", "Qualified", "Won", "Lost"];
 
@@ -27,7 +47,7 @@ export function LeadDetailDrawer({
   onOpenChange: (open: boolean) => void;
 }) {
   const contacts = useContacts();
-  const activities = useActivities();
+  const { profile } = useAuth();
 
   const [saving, setSaving] = React.useState(false);
   const [propertyType, setPropertyType] = React.useState("");
@@ -52,10 +72,120 @@ export function LeadDetailDrawer({
     return contacts.items.find((c) => c.id === lead.contactId) ?? null;
   }, [contacts.items, lead]);
 
-  const activityItems = React.useMemo(() => {
-    if (!lead) return [];
-    return activities.items.filter((a) => a.leadId === lead.id).slice(0, 30);
-  }, [activities.items, lead]);
+  const [activityItems, setActivityItems] = React.useState<
+    Array<Activity & { id: string }>
+  >([]);
+
+  function truncateText(text: string, max = 60) {
+    const t = (text ?? "").trim();
+    if (t.length <= max) return t;
+    return `${t.slice(0, max)}…`;
+  }
+
+  function relativeTime(from: Date) {
+    const now = new Date();
+    const startNow = new Date(now);
+    startNow.setHours(0, 0, 0, 0);
+    const startFrom = new Date(from);
+    startFrom.setHours(0, 0, 0, 0);
+
+    const diffDays = Math.round(
+      (startNow.getTime() - startFrom.getTime()) / 86400000
+    );
+
+    if (diffDays === 0) {
+      const diffMs = now.getTime() - from.getTime();
+      const minutes = Math.max(0, Math.floor(diffMs / 60000));
+      if (minutes < 1) return "Just now";
+      if (minutes < 60) return `${minutes} min ago`;
+      const hours = Math.floor(minutes / 60);
+      return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+    }
+
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return `${diffDays} days ago`;
+
+    return from.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    });
+  }
+
+  function getActivityVisual(type: string) {
+    switch (type) {
+      case "call":
+      case "Call":
+      case "Contact Made":
+        return {
+          Icon: Phone,
+          iconBg: "bg-blue-100",
+          iconColor: "text-blue-600",
+        };
+      case "site_visit":
+      case "Site Visit":
+        return {
+          Icon: MapPin,
+          iconBg: "bg-green-100",
+          iconColor: "text-green-600",
+        };
+      case "meeting":
+      case "Meeting":
+        return {
+          Icon: Users,
+          iconBg: "bg-green-100",
+          iconColor: "text-green-600",
+        };
+      case "note":
+      case "Follow Up":
+      case "follow_up":
+      case "Note":
+      case "whatsapp":
+        return {
+          Icon: MessageSquare,
+          iconBg: "bg-amber-100",
+          iconColor: "text-amber-600",
+        };
+      case "email":
+      case "Email":
+        return {
+          Icon: Mail,
+          iconBg: "bg-purple-100",
+          iconColor: "text-purple-600",
+        };
+      default:
+        return {
+          Icon: FileText,
+          iconBg: "bg-gray-100",
+          iconColor: "text-gray-600",
+        };
+    }
+  }
+
+  React.useEffect(() => {
+    if (!open || !lead?.id) return;
+
+    const clauses: Parameters<typeof query>[1][] = [
+      where("leadId", "==", lead.id),
+    ];
+
+    if (profile?.role === "agent") {
+      clauses.push(where("repId", "==", profile.uid));
+    }
+
+    clauses.push(orderBy("createdAt", "desc"));
+    clauses.push(limit(20));
+
+    const q = query(collection(db, "activities"), ...clauses);
+    const unsub = onSnapshot(q, (snap) => {
+      setActivityItems(
+        snap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as Activity),
+        }))
+      );
+    });
+    return () => unsub();
+  }, [open, lead?.id, profile?.role, profile?.uid]);
 
   async function onSave() {
     if (!lead) return;
@@ -147,25 +277,58 @@ export function LeadDetailDrawer({
               <div className="text-sm font-medium">Activity timeline</div>
               {activityItems.length === 0 ? (
                 <div className="text-sm text-muted-foreground">
-                  No activities logged yet.
+                  No activities yet.
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {activityItems.map((a) => (
-                    <div key={a.id} className="rounded-lg border p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="truncate text-sm font-medium">{a.title}</div>
-                        <div className="shrink-0 text-xs text-muted-foreground">
-                          {tsToDate(a.occurredAt)?.toLocaleString() ?? ""}
+                <div className="space-y-3">
+                  {activityItems.map((a) => {
+                    const createdAt =
+                      tsToDate(a.createdAt) ?? tsToDate(a.occurredAt);
+                    const createdAtDate = createdAt ?? new Date();
+                    const { Icon, iconBg, iconColor } = getActivityVisual(a.type);
+                    const notes = (a.notes ?? a.title ?? "").toString();
+
+                    const outcome =
+                      ((a as unknown as { outcome?: string }).outcome ??
+                        "neutral") as string;
+                    const outcomeColor =
+                      outcome === "positive"
+                        ? "bg-green-500"
+                        : outcome === "negative"
+                        ? "bg-red-500"
+                        : "bg-gray-400";
+
+                    const contactName = contact
+                      ? `${contact.firstName ?? ""} ${contact.lastName ?? ""}`.trim()
+                      : a.type;
+
+                    return (
+                      <div
+                        key={a.id}
+                        className="flex items-start gap-3 rounded-lg p-3 hover:bg-muted/50"
+                      >
+                        <div className={`p-2 rounded-lg ${iconBg}`}>
+                          <Icon className={`h-4 w-4 ${iconColor}`} />
                         </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-medium">
+                              {contactName || a.type}
+                            </p>
+                            <span className="text-xs text-muted-foreground">
+                              {relativeTime(createdAtDate)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {truncateText(notes)}
+                          </p>
+                        </div>
+                        <div
+                          className={`h-2 w-2 rounded-full mt-2 ${outcomeColor}`}
+                        />
                       </div>
-                      {a.notes && (
-                        <div className="mt-1 text-sm text-muted-foreground">
-                          {a.notes}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
