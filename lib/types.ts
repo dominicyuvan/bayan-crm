@@ -108,17 +108,20 @@ export interface Contract {
 
 export interface TeamMember {
   id?: string;
-  uid: string;
+  uid?: string;
+  displayName?: string;
+  initials?: string;
+
+  name: string;
   email: string;
-  displayName: string;
-  name?: string;
-  initials: string;
   role: "admin" | "manager" | "sales_executive" | "agent";
-  phone?: string;
-  status?: "active" | "inactive";
-  isActive: boolean;
+  phone: string;
+  status: "active" | "inactive";
+  joinedAt: Timestamp;
   createdAt: Timestamp;
-  updatedAt: Timestamp;
+  updatedAt?: Timestamp;
+
+  isActive?: boolean;
 }
 
 export interface CadenceStep {
