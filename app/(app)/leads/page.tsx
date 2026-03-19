@@ -25,6 +25,7 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile";
 import { ChevronRight } from "lucide-react";
 import { toast } from "sonner";
+import { tsToDate } from "@/lib/firestore";
 
 const STATUSES: Array<LeadStatus | "all"> = [
   "all",
@@ -73,6 +74,20 @@ function statusBadgeClass(status: LeadStatus) {
   }
 }
 
+function getLeadLastContactDate(lead: any) {
+  return tsToDate(lead?.lastContactedAt) ?? tsToDate(lead?.lastContactAt);
+}
+
+function getColdnessMeta(lead: any) {
+  const last = getLeadLastContactDate(lead);
+  if (!last) return { dot: "bg-red-500", title: "Never contacted" };
+  const days = Math.floor((Date.now() - last.getTime()) / 86400000);
+  if (days < 7) return { dot: "bg-green-500", title: "Active (0-7 days)" };
+  if (days < 14) return { dot: "bg-amber-500", title: "Warm (7-14 days)" };
+  if (days < 30) return { dot: "bg-orange-500", title: "Cooling (14-30 days)" };
+  return { dot: "bg-red-500", title: "Going cold (30+ days)" };
+}
+
 export default function LeadsPage() {
   const { profile } = useAuth();
   const leads = useLeads();
@@ -90,6 +105,7 @@ export default function LeadsPage() {
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [mobileStatusLeadId, setMobileStatusLeadId] = React.useState<string | null>(null);
+  const [bannerDismissed, setBannerDismissed] = React.useState(false);
   const selected = React.useMemo(
     () => leads.items.find((l) => l.id === selectedId) ?? null,
     [leads.items, selectedId]
@@ -128,6 +144,20 @@ export default function LeadsPage() {
     });
   }, [leads.items, contacts.items, q, status, temp, rep, role, profile?.uid]);
 
+  const generatedUncontactedCount = React.useMemo(() => {
+    return filtered.filter((l: any) => l.generatedAt && !getLeadLastContactDate(l)).length;
+  }, [filtered]);
+
+  React.useEffect(() => {
+    try {
+      setBannerDismissed(
+        window.sessionStorage.getItem("bayan_generated_banner_dismissed") === "true"
+      );
+    } catch {
+      // ignore
+    }
+  }, []);
+
   function MobileLeadCard({
     lead,
     onClick,
@@ -163,11 +193,19 @@ export default function LeadsPage() {
               }`}
             />
             <div>
-              <p className="text-sm font-semibold">
-                {contact
-                  ? `${contact.firstName} ${contact.lastName}`
-                  : "Lead"}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold">
+                  {contact ? `${contact.firstName} ${contact.lastName}` : "Lead"}
+                </p>
+                {(lead as any).generatedAt ? (
+                  <Badge
+                    variant="outline"
+                    className="border-purple-200 bg-purple-50 text-[10px] text-purple-600"
+                  >
+                    ✨ Generated
+                  </Badge>
+                ) : null}
+              </div>
               <p className="text-xs text-muted-foreground">
                 {lead.propertyType ?? "Lead"} · {lead.location ?? "—"}
               </p>
@@ -213,6 +251,10 @@ export default function LeadsPage() {
           </Popover>
         </div>
         <div className="mt-3 flex items-center justify-between">
+          <span
+            title={getColdnessMeta(lead).title}
+            className={`inline-block h-2.5 w-2.5 rounded-full ${getColdnessMeta(lead).dot}`}
+          />
           <span className="font-mono text-sm font-semibold">
             OMR {valueStr}
           </span>
@@ -223,6 +265,28 @@ export default function LeadsPage() {
 
   return (
     <div className="space-y-4">
+      {!bannerDismissed && generatedUncontactedCount > 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <div className="text-sm text-amber-800">
+            You have {generatedUncontactedCount} new generated leads waiting — start reaching out!
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setBannerDismissed(true);
+              try {
+                window.sessionStorage.setItem("bayan_generated_banner_dismissed", "true");
+              } catch {
+                // ignore
+              }
+            }}
+          >
+            Dismiss
+          </Button>
+        </div>
+      )}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="text-lg font-semibold tracking-tight">Leads</div>
@@ -351,7 +415,17 @@ export default function LeadsPage() {
                       onClick={() => setSelectedId(l.id)}
                     >
                       <TableCell className="font-medium">
-                        {c ? `${c.firstName} ${c.lastName}` : "—"}
+                        <div className="flex items-center gap-2">
+                          <span>{c ? `${c.firstName} ${c.lastName}` : "—"}</span>
+                          {(l as any).generatedAt ? (
+                            <Badge
+                              variant="outline"
+                              className="border-purple-200 bg-purple-50 text-[10px] text-purple-600"
+                            >
+                              ✨ Generated
+                            </Badge>
+                          ) : null}
+                        </div>
                       </TableCell>
                       <TableCell>{l.propertyType ?? "—"}</TableCell>
                       <TableCell>{l.location ?? "—"}</TableCell>
@@ -359,7 +433,12 @@ export default function LeadsPage() {
                         {typeof l.valueOmr === "number" ? formatOMR(l.valueOmr) : "—"}
                       </TableCell>
                       <TableCell>
-                        <DropdownMenu>
+                        <div className="flex items-center gap-2">
+                          <span
+                            title={getColdnessMeta(l).title}
+                            className={`inline-block h-2.5 w-2.5 rounded-full ${getColdnessMeta(l).dot}`}
+                          />
+                          <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button
                               type="button"
@@ -388,7 +467,8 @@ export default function LeadsPage() {
                               </DropdownMenuItem>
                             ))}
                           </DropdownMenuContent>
-                        </DropdownMenu>
+                          </DropdownMenu>
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <Button
@@ -426,7 +506,17 @@ export default function LeadsPage() {
                   onClick={() => setSelectedId(l.id)}
                 >
                   <div className="text-sm font-semibold">
-                    {c ? `${c.firstName} ${c.lastName}` : "—"}
+                    <div className="flex items-center gap-2">
+                      <span>{c ? `${c.firstName} ${c.lastName}` : "—"}</span>
+                      {(l as any).generatedAt ? (
+                        <Badge
+                          variant="outline"
+                          className="border-purple-200 bg-purple-50 text-[10px] text-purple-600"
+                        >
+                          ✨ Generated
+                        </Badge>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
                     {(l.propertyType ?? "Lead") + (l.location ? ` • ${l.location}` : "")}
@@ -475,6 +565,10 @@ export default function LeadsPage() {
                       </PopoverContent>
                     </Popover>
                     <div className="text-xs text-muted-foreground">
+                      <span
+                        title={getColdnessMeta(l).title}
+                        className={`mr-2 inline-block h-2.5 w-2.5 rounded-full ${getColdnessMeta(l).dot}`}
+                      />
                       {typeof l.valueOmr === "number" ? formatOMR(l.valueOmr) : "—"}
                     </div>
                   </div>

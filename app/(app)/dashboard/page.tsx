@@ -2,12 +2,18 @@
 
 import * as React from "react";
 import { addDays, startOfDay, startOfMonth } from "date-fns";
-import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  serverTimestamp,
+  updateDoc,
+  writeBatch,
+} from "firebase/firestore";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { db } from "@/lib/firebase";
 import { useActivities, useContacts, useLeads, useTasks } from "@/lib/firestore-provider";
-import { tsToDate } from "@/lib/firestore";
+import { firestore, tsToDate } from "@/lib/firestore";
 import { cn, formatOMR } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,6 +38,7 @@ import {
   Zap,
   Users,
   ChevronRight,
+  Sparkles,
 } from "lucide-react";
 import { AddContactModal } from "@/components/contacts/add-contact-modal";
 import { AddLeadModal } from "@/components/leads/add-lead-modal";
@@ -40,6 +47,7 @@ import { ContactDetailDrawer } from "@/components/contacts/contact-detail-drawer
 import { useLogActivityControl } from "@/lib/log-activity-control-context";
 import { DEFAULT_CADENCES } from "@/lib/cadence-templates";
 import type { Activity, Lead, Task } from "@/lib/types";
+import { generateTopLeads } from "@/lib/lead-generator";
 
 function KpiCard({
   label,
@@ -323,6 +331,7 @@ export default function DashboardPage() {
   const [contactDrawerId, setContactDrawerId] = React.useState<string | null>(null);
   const [overdueTaskId, setOverdueTaskId] = React.useState<string | null>(null);
   const [overdueOutcomeNote, setOverdueOutcomeNote] = React.useState("");
+  const [isGenerating, setIsGenerating] = React.useState(false);
 
   const selectedLead = React.useMemo(() => {
     if (!leadDrawerId) return null;
@@ -397,6 +406,98 @@ export default function DashboardPage() {
       toast.success("Task completed");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to complete task");
+    }
+  }
+
+  async function handleGenerateLeads() {
+    if (!profile) return;
+    if (contacts.items.length === 0) {
+      toast.error("Add some contacts first before generating leads");
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      const topContacts = generateTopLeads(
+        contacts.items,
+        leads.items,
+        activities.items,
+        5
+      );
+
+      if (topContacts.length === 0) {
+        toast.info("No cold contacts found — all contacts have active leads!");
+        return;
+      }
+
+      const batchSize = 499;
+      for (let i = 0; i < topContacts.length; i += batchSize) {
+        const chunk = topContacts.slice(i, i + batchSize);
+        const batch = writeBatch(firestore);
+
+        chunk.forEach(({ contact, coldnessScore, reasons }) => {
+          const leadRef = doc(collection(firestore, "leads"));
+          const lastContactedAt =
+            (contact as unknown as { lastContactedAt?: unknown }).lastContactedAt ??
+            contact.lastContactAt ??
+            null;
+
+          batch.set(leadRef, {
+            contactId: contact.id ?? "",
+            contactName: `${contact.firstName} ${contact.lastName}`.trim(),
+            contactPhone: contact.phone || "",
+            company: contact.company || "",
+            propertyType: "Unknown",
+            location: "",
+            value: 0,
+            valueOmr: 0,
+            status: "Initial Contact",
+            temperature:
+              coldnessScore > 60 ? "hot" : coldnessScore > 30 ? "warm" : "cold",
+            score: coldnessScore,
+            source: contact.source || "Generated",
+            assignedTo: profile.displayName || "",
+            assignedToUid: profile.uid || "",
+            cadenceId: null,
+            cadenceStep: 0,
+            cadenceStepIndex: 0,
+            cadenceNextDue: null,
+            nextAction: "Initial contact",
+            nextActionDue: null,
+            daysInPipeline: 0,
+            lastContactedAt: lastContactedAt ?? null,
+            lastContactAt: lastContactedAt ?? null,
+            notes: `Auto-generated lead. Reasons: ${reasons.join(", ")}`,
+            generatedAt: serverTimestamp(),
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        });
+
+        await batch.commit();
+      }
+
+      toast.success(`${topContacts.length} leads generated! 🎯`, {
+        description: `Check your Leads page — ${topContacts.length} cold contacts are ready to work`,
+        duration: 5000,
+        action: {
+          label: "View Leads",
+          onClick: () => {
+            window.location.href = "/leads";
+          },
+        },
+      });
+    } catch (err) {
+      console.error("Generate leads error:", err);
+      toast.error(
+        `Failed to generate leads: ${
+          err && typeof err === "object" && "message" in err
+            ? String((err as { message?: string }).message ?? "Unknown error")
+            : "Unknown error"
+        }`
+      );
+    } finally {
+      setIsGenerating(false);
     }
   }
 
@@ -733,6 +834,15 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
+          <Button
+            onClick={() => void handleGenerateLeads()}
+            disabled={isGenerating}
+            variant="outline"
+            className="gap-2"
+          >
+            <Sparkles className="h-4 w-4" />
+            {isGenerating ? "Generating..." : "Generate Leads"}
+          </Button>
         </div>
       </div>
 
