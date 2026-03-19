@@ -27,7 +27,9 @@ function computeStatsForMember(
   activities: ReturnType<typeof useActivities>["items"]
 ) {
   const monthStart = startOfMonth(new Date());
-  const memberLeads = leads.filter((l) => l.assignedRepId === member.id);
+  const memberLeads = leads.filter(
+    (l) => (l.assignedToUid ?? l.assignedRepId ?? "") === member.id
+  );
   const leadsCount = memberLeads.length;
   const wonDeals = memberLeads.filter((l) => l.status === "Won").length;
   const pipelineValue = memberLeads.reduce(

@@ -25,6 +25,9 @@ export interface Contact {
   jobTitle?: string;
   source?: string;
   assignedRepId?: string;
+  // Owner (who created the record)
+  assignedTo?: string;
+  assignedToUid?: string;
   tags?: string[];
   notes?: string;
   createdAt: Timestamp;
@@ -46,6 +49,9 @@ export interface Lead {
   score?: number;
   source?: string;
   assignedRepId?: string;
+  // Owner (who created the record)
+  assignedTo?: string;
+  assignedToUid?: string;
   cadenceId?: string;
   cadenceStepIndex?: number | null;
   notes?: string;

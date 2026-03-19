@@ -63,7 +63,9 @@ export default function ReportsPage() {
   const reps = teamMembers.items;
 
   const rows = reps.map((rep) => {
-    const repLeads = leads.items.filter((l) => l.assignedRepId === rep.uid);
+    const repLeads = leads.items.filter(
+      (l) => (l.assignedToUid ?? l.assignedRepId ?? "") === rep.uid
+    );
     const repTasks = tasks.items.filter((t) => t.assignedToId === rep.uid);
     const repActivities = activities.items.filter((a) => a.repId === rep.uid);
 

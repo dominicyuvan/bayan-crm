@@ -5,7 +5,6 @@ import { addDoc, serverTimestamp, type WithFieldValue } from "firebase/firestore
 import { toast } from "sonner";
 import { contactsCol } from "@/lib/firestore";
 import { useAuth } from "@/lib/auth-context";
-import { useTeamMembers } from "@/lib/firestore-provider";
 import type { Contact } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -16,67 +15,51 @@ import { Textarea } from "@/components/ui/textarea";
 
 export function AddContactModal() {
   const { profile } = useAuth();
-  const team = useTeamMembers();
   const [open, setOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
 
   const [firstName, setFirstName] = React.useState("");
   const [lastName, setLastName] = React.useState("");
   const [phone, setPhone] = React.useState("");
-  const [alternatePhone, setAlternatePhone] = React.useState("");
   const [whatsapp, setWhatsapp] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [company, setCompany] = React.useState("");
-  const [jobTitle, setJobTitle] = React.useState("");
   const [source, setSource] = React.useState("");
-  const [assignedRepId, setAssignedRepId] = React.useState<string>("");
-  const [tags, setTags] = React.useState("");
   const [notes, setNotes] = React.useState("");
-
-  React.useEffect(() => {
-    if (profile?.uid && !assignedRepId) setAssignedRepId(profile.uid);
-  }, [profile?.uid, assignedRepId]);
 
   function reset() {
     setFirstName("");
     setLastName("");
     setPhone("");
-    setAlternatePhone("");
     setWhatsapp("");
     setEmail("");
     setCompany("");
-    setJobTitle("");
     setSource("");
-    setAssignedRepId(profile?.uid ?? "");
-    setTags("");
     setNotes("");
   }
 
   async function onSave() {
+    if (!firstName.trim() || !lastName.trim()) {
+      toast.error("First name and last name are required");
+      return;
+    }
     if (!phone.trim()) {
       toast.error("Phone is required");
       return;
     }
     setSubmitting(true);
     try {
-      const tagList = tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean);
-
       const payload = {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         phone: phone.trim(),
-        alternatePhone: alternatePhone.trim(),
-        whatsapp: whatsapp.trim(),
-        email: email.trim(),
-        company: company.trim(),
-        jobTitle: jobTitle.trim(),
-        source: source.trim(),
-        assignedRepId: assignedRepId,
-        tags: tagList,
-        notes: notes.trim(),
+        whatsapp: whatsapp.trim() || "",
+        email: email.trim() || "",
+        company: company.trim() || "",
+        source: source.trim() || "",
+        notes: notes.trim() || "",
+        assignedTo: profile?.displayName || "",
+        assignedToUid: profile?.uid || "",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         lastContactAt: serverTimestamp(),
@@ -113,12 +96,24 @@ export function AddContactModal() {
         <div className="grid gap-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="grid gap-2">
-              <Label>First Name</Label>
-              <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+              <Label>
+                First Name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                required
+              />
             </div>
             <div className="grid gap-2">
-              <Label>Last Name</Label>
-              <Input value={lastName} onChange={(e) => setLastName(e.target.value)} />
+              <Label>
+                Last Name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                required
+              />
             </div>
           </div>
 
@@ -128,13 +123,6 @@ export function AddContactModal() {
                 Phone <span className="text-destructive">*</span>
               </Label>
               <Input value={phone} onChange={(e) => setPhone(e.target.value)} required />
-            </div>
-            <div className="grid gap-2">
-              <Label>Alternate Phone</Label>
-              <Input
-                value={alternatePhone}
-                onChange={(e) => setAlternatePhone(e.target.value)}
-              />
             </div>
           </div>
 
@@ -158,48 +146,32 @@ export function AddContactModal() {
               <Label>Company</Label>
               <Input value={company} onChange={(e) => setCompany(e.target.value)} />
             </div>
-            <div className="grid gap-2">
-              <Label>Job Title</Label>
-              <Input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
-            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label>Source</Label>
-              <Input
-                value={source}
-                onChange={(e) => setSource(e.target.value)}
-                placeholder="e.g. WhatsApp, Walk-in, Referral"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label>Tags</Label>
-              <Input
-                value={tags}
-                onChange={(e) => setTags(e.target.value)}
-                placeholder="Comma-separated"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label>Assigned Rep</Label>
-              <Select value={assignedRepId} onValueChange={setAssignedRepId}>
+              <Select value={source} onValueChange={setSource}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select rep" />
+                  <SelectValue placeholder="Select source" />
                 </SelectTrigger>
                 <SelectContent>
-                  {team.items.map((m) => (
-                    <SelectItem key={m.id} value={m.id ?? m.email}>
-                      {m.name}
+                  {[
+                    "Referral",
+                    "Exhibition",
+                    "Website",
+                    "Cold call",
+                    "Walk-in",
+                    "WhatsApp",
+                    "Other",
+                  ].map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div />
           </div>
 
           <div className="grid gap-2">

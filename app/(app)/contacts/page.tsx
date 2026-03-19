@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useAuth } from "@/lib/auth-context";
-import { useContacts, useTeamMembers } from "@/lib/firestore-provider";
+import { useContacts } from "@/lib/firestore-provider";
 import { tsToDate } from "@/lib/firestore";
 import { cn } from "@/lib/utils";
 import { AddContactModal } from "@/components/contacts/add-contact-modal";
@@ -19,14 +19,10 @@ import { whatsappLink } from "@/lib/utils";
 export default function ContactsPage() {
   const { profile } = useAuth();
   const contacts = useContacts();
-  const team = useTeamMembers();
   const role = profile?.role ?? "agent";
-  const isAdmin = role === "admin";
-  const isManager = role === "manager" || isAdmin;
 
   const [q, setQ] = React.useState("");
   const [source, setSource] = React.useState<string>("all");
-  const [rep, setRep] = React.useState<string>("all");
   const isMobile = useIsMobile();
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
@@ -43,7 +39,8 @@ export default function ContactsPage() {
   const filtered = React.useMemo(() => {
     const query = q.trim().toLowerCase();
     return contacts.items.filter((c) => {
-      if (role === "agent" && c.assignedRepId && c.assignedRepId !== profile?.uid) {
+      const ownerUid = c.assignedToUid ?? c.assignedRepId ?? "";
+      if (role === "agent" && ownerUid !== profile?.uid) {
         return false;
       }
       const name = `${c.firstName} ${c.lastName}`.toLowerCase();
@@ -52,10 +49,9 @@ export default function ContactsPage() {
       const matchesQ =
         !query || name.includes(query) || company.includes(query) || phone.includes(query);
       const matchesSource = source === "all" || c.source === source;
-      const matchesRep = rep === "all" || c.assignedRepId === rep;
-      return matchesQ && matchesSource && matchesRep;
+      return matchesQ && matchesSource;
     });
-  }, [contacts.items, q, source, rep, role, profile?.uid]);
+  }, [contacts.items, q, source, role, profile?.uid]);
 
   function MobileContactCard({
     contact,
@@ -143,27 +139,8 @@ export default function ContactsPage() {
           </SelectContent>
         </Select>
 
-        {isManager && (
-          <Select value={rep} onValueChange={setRep}>
-            <SelectTrigger className="sm:w-56">
-              <SelectValue placeholder="Rep" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All reps</SelectItem>
-              {team.items.map((m) => (
-                <SelectItem
-                  key={m.id}
-                  value={m.id ?? m.email}
-                >
-                  {m.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-
         <div className="sm:ml-auto">
-          <Button variant="outline" onClick={() => (setQ(""), setSource("all"), setRep("all"))}>
+          <Button variant="outline" onClick={() => (setQ(""), setSource("all"))}>
             Clear
           </Button>
         </div>

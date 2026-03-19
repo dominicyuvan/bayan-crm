@@ -120,7 +120,10 @@ export default function DashboardPage() {
 
   const myLeads = React.useMemo(() => {
     if (!profile?.uid) return [];
-    return leads.items.filter((l) => l.assignedRepId === profile.uid && l.status !== "Won" && l.status !== "Lost");
+    return leads.items.filter((l) => {
+      const ownerUid = l.assignedToUid ?? l.assignedRepId ?? "";
+      return ownerUid === profile.uid && l.status !== "Won" && l.status !== "Lost";
+    });
   }, [leads.items, profile?.uid]);
 
   const overdue = React.useMemo(
@@ -133,7 +136,10 @@ export default function DashboardPage() {
 
   const kpis = React.useMemo(() => {
     const visibleLeads = leads.items.filter(
-      (l) => !isAgent || l.assignedRepId === profile?.uid
+      (l) => {
+        const ownerUid = l.assignedToUid ?? l.assignedRepId ?? "";
+        return !isAgent || ownerUid === profile?.uid;
+      }
     );
     const todayActivities = activities.items.filter((a) => {
       if (!profile?.uid) return false;

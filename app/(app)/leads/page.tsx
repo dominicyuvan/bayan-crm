@@ -65,9 +65,8 @@ export default function LeadsPage() {
   const filtered = React.useMemo(() => {
     const query = q.trim().toLowerCase();
     return leads.items.filter((l) => {
-      if (role === "agent" && l.assignedRepId && l.assignedRepId !== profile?.uid) {
-        return false;
-      }
+      const ownerUid = l.assignedToUid ?? l.assignedRepId ?? "";
+      if (role === "agent" && ownerUid !== profile?.uid) return false;
       const c = contacts.items.find((cc) => cc.id === l.contactId);
       const contactName = c ? `${c.firstName} ${c.lastName}`.toLowerCase() : "";
       const pt = (l.propertyType ?? "").toLowerCase();
@@ -79,7 +78,7 @@ export default function LeadsPage() {
         loc.includes(query);
       const matchesStatus = status === "all" || l.status === status;
       const matchesTemp = temp === "all" || l.temperature === temp;
-      const matchesRep = rep === "all" || l.assignedRepId === rep;
+      const matchesRep = rep === "all" || ownerUid === rep;
       return matchesQ && matchesStatus && matchesTemp && matchesRep;
     });
   }, [leads.items, contacts.items, q, status, temp, rep, role, profile?.uid]);
@@ -104,8 +103,6 @@ export default function LeadsPage() {
       Lost: "bg-red-100 text-red-700",
     };
     const contact = contacts.items.find((c) => c.id === lead.contactId);
-    const repName =
-      team.items.find((m) => m.id === lead.assignedRepId)?.name ?? "Unassigned";
     const valueStr =
       typeof lead.valueOmr === "number" ? lead.valueOmr.toFixed(3) : "0.000";
     return (
@@ -140,7 +137,6 @@ export default function LeadsPage() {
           </span>
         </div>
         <div className="mt-3 flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">{repName}</span>
           <span className="font-mono text-sm font-semibold">
             OMR {valueStr}
           </span>
@@ -199,22 +195,31 @@ export default function LeadsPage() {
           </SelectContent>
         </Select>
         {isManager && (
-          <Select value={rep} onValueChange={setRep}>
-            <SelectTrigger className="sm:w-56">
-              <SelectValue placeholder="Rep" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All reps</SelectItem>
-              {team.items.map((m) => (
-                <SelectItem
-                  key={m.id}
-                  value={m.id ?? m.email}
-                >
-                  {m.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="w-full sm:w-auto">
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              <Button
+                size="sm"
+                variant={rep === "all" ? "default" : "outline"}
+                onClick={() => setRep("all")}
+              >
+                All reps
+              </Button>
+              {team.items.map((m) => {
+                const repUid = m.id ?? m.uid ?? m.email;
+                if (!repUid) return null;
+                return (
+                  <Button
+                    key={repUid}
+                    size="sm"
+                    variant={rep === repUid ? "default" : "outline"}
+                    onClick={() => setRep(repUid)}
+                  >
+                    {m.name}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
         )}
         <div className="sm:ml-auto">
           <Button
@@ -257,15 +262,12 @@ export default function LeadsPage() {
                   <TableHead>Location</TableHead>
                   <TableHead>Value</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Assigned Rep</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.map((l) => {
                   const c = contacts.items.find((cc) => cc.id === l.contactId);
-                  const repName =
-                    team.items.find((m) => m.id === l.assignedRepId)?.name ?? "—";
                   return (
                     <TableRow
                       key={l.id}
@@ -285,7 +287,6 @@ export default function LeadsPage() {
                           {l.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">{repName}</TableCell>
                       <TableCell className="text-right">
                         <Button
                           size="sm"
@@ -303,7 +304,7 @@ export default function LeadsPage() {
                 })}
                 {filtered.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
                       No leads found.
                     </TableCell>
                   </TableRow>

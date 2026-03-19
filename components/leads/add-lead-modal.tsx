@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { leadsCol } from "@/lib/firestore";
 import type { Lead, LeadStatus } from "@/lib/types";
 import { useAuth } from "@/lib/auth-context";
-import { useContacts, useTeamMembers, useFirestore } from "@/lib/firestore-provider";
+import { useContacts } from "@/lib/firestore-provider";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -14,13 +14,21 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-const STATUSES: LeadStatus[] = ["New", "Contacted", "Qualified", "Won", "Lost"];
+const PROPERTY_TYPES = ["Office", "Retail", "Warehouse", "Industrial", "Mixed", "Other"];
+const SOURCES = [
+  "Referral",
+  "Exhibition",
+  "Website",
+  "Cold call",
+  "Walk-in",
+  "WhatsApp",
+  "Other",
+];
 
 export function AddLeadModal() {
   const { profile } = useAuth();
   const contacts = useContacts();
-  const team = useTeamMembers();
-  const { cadences } = useFirestore();
+  const status: LeadStatus = "New";
 
   const [open, setOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
@@ -29,31 +37,25 @@ export function AddLeadModal() {
   const [propertyType, setPropertyType] = React.useState("");
   const [location, setLocation] = React.useState("");
   const [valueOmr, setValueOmr] = React.useState<string>("");
-  const [status, setStatus] = React.useState<LeadStatus>("New");
   const [source, setSource] = React.useState("");
-  const [assignedRepId, setAssignedRepId] = React.useState<string>("");
-  const [cadenceId, setCadenceId] = React.useState<string>("");
   const [notes, setNotes] = React.useState("");
-
-  React.useEffect(() => {
-    if (profile?.uid && !assignedRepId) setAssignedRepId(profile.uid);
-  }, [profile?.uid, assignedRepId]);
 
   function reset() {
     setContactId("");
     setPropertyType("");
     setLocation("");
     setValueOmr("");
-    setStatus("New");
     setSource("");
-    setAssignedRepId(profile?.uid ?? "");
-    setCadenceId("");
     setNotes("");
   }
 
   async function onSave() {
     if (!contactId) {
       toast.error("Contact is required");
+      return;
+    }
+    if (!propertyType.trim()) {
+      toast.error("Property type is required");
       return;
     }
     setSubmitting(true);
@@ -71,11 +73,10 @@ export function AddLeadModal() {
         location: location.trim(),
         valueOmr: parsedValue,
         status,
-        source: source.trim(),
-        assignedRepId: assignedRepId,
-        cadenceId: cadenceId,
-        cadenceStepIndex: cadenceId ? 0 : null,
-        notes: notes.trim(),
+        source: source.trim() || "",
+        notes: notes.trim() || "",
+        assignedTo: profile?.displayName || "",
+        assignedToUid: profile?.uid || "",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         lastContactAt: serverTimestamp(),
@@ -130,8 +131,21 @@ export function AddLeadModal() {
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="grid gap-2">
-              <Label>Property Type</Label>
-              <Input value={propertyType} onChange={(e) => setPropertyType(e.target.value)} />
+              <Label>
+                Property Type <span className="text-destructive">*</span>
+              </Label>
+              <Select value={propertyType} onValueChange={setPropertyType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PROPERTY_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid gap-2">
               <Label>Location</Label>
@@ -144,59 +158,22 @@ export function AddLeadModal() {
               <Label>Value (OMR)</Label>
               <Input value={valueOmr} onChange={(e) => setValueOmr(e.target.value)} placeholder="e.g. 25,000.000" />
             </div>
-            <div className="grid gap-2">
-              <Label>Status</Label>
-              <Select value={status} onValueChange={(v) => setStatus(v as LeadStatus)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUSES.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label>Assigned Rep</Label>
-              <Select value={assignedRepId} onValueChange={setAssignedRepId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select rep" />
-                </SelectTrigger>
-                <SelectContent>
-                  {team.items.map((m) => (
-                    <SelectItem key={m.id} value={m.id ?? m.email}>
-                      {m.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label>Cadence</Label>
-              <Select value={cadenceId} onValueChange={setCadenceId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Optional" />
-                </SelectTrigger>
-                <SelectContent>
-                  {cadences.items.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
 
           <div className="grid gap-2">
             <Label>Source</Label>
-            <Input value={source} onChange={(e) => setSource(e.target.value)} />
+            <Select value={source} onValueChange={setSource}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select source" />
+              </SelectTrigger>
+              <SelectContent>
+                {SOURCES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="grid gap-2">
