@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { db } from "@/lib/firebase";
 import type { Contact } from "@/lib/types";
 import { tsToDate } from "@/lib/firestore";
+import { useAuth } from "@/lib/auth-context";
 import { whatsappLink } from "@/lib/utils";
 import { useActivities, useLeads } from "@/lib/firestore-provider";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ export function ContactDetailDrawer({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { profile } = useAuth();
   const activities = useActivities();
   const leads = useLeads();
 
@@ -43,9 +45,13 @@ export function ContactDetailDrawer({
   const activityItems = React.useMemo(() => {
     if (!contact) return [];
     return activities.items
-      .filter((a) => a.contactId === contact.id)
+      .filter((a) => {
+        if (a.contactId !== contact.id) return false;
+        if (profile?.role === "agent" && a.repId !== profile.uid) return false;
+        return true;
+      })
       .slice(0, 30);
-  }, [activities.items, contact]);
+  }, [activities.items, contact, profile?.role, profile?.uid]);
 
   const linkedLeads = React.useMemo(() => {
     if (!contact) return [];

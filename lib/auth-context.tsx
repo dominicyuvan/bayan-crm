@@ -12,6 +12,7 @@ import {
 } from "firebase/auth";
 import {
   doc,
+  getDoc,
   serverTimestamp,
   setDoc,
   type Timestamp,
@@ -20,7 +21,7 @@ import { auth, db } from "@/lib/firebase";
 import type { UserProfile, UserRole } from "@/lib/types";
 
 const ALLOWED_DOMAIN = "@bayaninvestment.com";
-const MANAGER_EMAILS = new Set([
+const ADMIN_EMAILS = new Set([
   "dominic@bayaninvestment.com",
   "info@bayaninvestment.com",
 ]);
@@ -36,8 +37,21 @@ function getInitials(displayName: string, email: string) {
   return (first + last).toUpperCase();
 }
 
-function roleFromEmail(email: string): UserRole {
-  return MANAGER_EMAILS.has(email.toLowerCase()) ? "manager" : "agent";
+async function resolveUserRole(user: User): Promise<UserRole> {
+  const email = (user.email ?? "").toLowerCase();
+  if (ADMIN_EMAILS.has(email)) return "admin";
+
+  const memberRef = doc(db, "team_members", user.uid);
+  const snap = await getDoc(memberRef);
+  if (snap.exists()) {
+    const data = snap.data() as { role?: string | null } | undefined;
+    const rawRole = data?.role ?? null;
+    if (rawRole === "admin") return "admin";
+    if (rawRole === "manager") return "manager";
+    if (rawRole === "sales_executive" || rawRole === "agent") return "agent";
+  }
+
+  return "agent";
 }
 
 async function upsertTeamMemberProfile(user: User) {
@@ -51,7 +65,7 @@ async function upsertTeamMemberProfile(user: User) {
     user.displayName?.trim() || email.split("@")[0] || "Bayan User";
 
   const initials = getInitials(displayName, email);
-  const role = roleFromEmail(email);
+  const role = await resolveUserRole(user);
 
   // Note: we store profile in `team_members/{uid}` for simplicity.
   const ref = doc(db, "team_members", user.uid);
@@ -64,6 +78,7 @@ async function upsertTeamMemberProfile(user: User) {
       initials,
       role,
       isActive: true,
+      status: "active",
       updatedAt: serverTimestamp(),
       createdAt: serverTimestamp(),
       lastLoginAt: serverTimestamp(),

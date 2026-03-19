@@ -17,7 +17,9 @@ export default function ContactsPage() {
   const { profile } = useAuth();
   const contacts = useContacts();
   const team = useTeamMembers();
-  const isManager = profile?.role === "manager";
+  const role = profile?.role ?? "agent";
+  const isAdmin = role === "admin";
+  const isManager = role === "manager" || isAdmin;
 
   const [q, setQ] = React.useState("");
   const [source, setSource] = React.useState<string>("all");
@@ -37,6 +39,9 @@ export default function ContactsPage() {
   const filtered = React.useMemo(() => {
     const query = q.trim().toLowerCase();
     return contacts.items.filter((c) => {
+      if (role === "agent" && c.assignedRepId && c.assignedRepId !== profile?.uid) {
+        return false;
+      }
       const name = `${c.firstName} ${c.lastName}`.toLowerCase();
       const company = (c.company ?? "").toLowerCase();
       const phone = (c.phone ?? "").toLowerCase();
@@ -46,7 +51,7 @@ export default function ContactsPage() {
       const matchesRep = rep === "all" || c.assignedRepId === rep;
       return matchesQ && matchesSource && matchesRep;
     });
-  }, [contacts.items, q, source, rep]);
+  }, [contacts.items, q, source, rep, role, profile?.uid]);
 
   return (
     <div className="space-y-4">

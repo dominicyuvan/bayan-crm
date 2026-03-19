@@ -26,6 +26,9 @@ export default function DashboardPage() {
   const activities = useActivities();
   const tasks = useTasks();
 
+  const role = profile?.role ?? "agent";
+  const isAgent = role === "agent";
+
   const loading = contacts.loading || leads.loading || activities.loading || tasks.loading;
 
   const todayStart = React.useMemo(() => startOfDay(new Date()), []);
@@ -36,30 +39,46 @@ export default function DashboardPage() {
     return leads.items.filter((l) => l.assignedRepId === profile.uid && l.status !== "Won" && l.status !== "Lost");
   }, [leads.items, profile?.uid]);
 
-  const overdue = React.useMemo(() => tasks.items.filter((t) => t.isOverdue), [tasks.items]);
+  const overdue = React.useMemo(
+    () =>
+      tasks.items.filter(
+        (t) => t.isOverdue && (!isAgent || t.assignedToId === profile?.uid)
+      ),
+    [tasks.items, isAgent, profile?.uid]
+  );
 
   const kpis = React.useMemo(() => {
-    const contactsMadeToday = activities.items.filter((a) => {
+    const visibleTasks = tasks.items.filter(
+      (t) => !isAgent || t.assignedToId === profile?.uid
+    );
+    const visibleLeads = leads.items.filter(
+      (l) => !isAgent || l.assignedRepId === profile?.uid
+    );
+    const visibleActivities = activities.items.filter(
+      (a) => !isAgent || a.repId === profile?.uid
+    );
+
+    const contactsMadeToday = visibleActivities.filter((a) => {
       const d = tsToDate(a.occurredAt);
       return !!d && d >= todayStart;
     }).length;
 
-    const siteVisitsToday = activities.items.filter((a) => {
+    const siteVisitsToday = visibleActivities.filter((a) => {
       const d = tsToDate(a.occurredAt);
       return a.type === "site_visit" && !!d && d >= todayStart;
     }).length;
 
-    const followUpsToday = tasks.items.filter((t) => {
+    const followUpsToday = visibleTasks.filter((t) => {
       const d = tsToDate(t.dueAt);
       return t.status !== "completed" && !!d && d >= todayStart;
     }).length;
 
-    const dealsWonThisMonth = leads.items.filter((l) => {
+    const dealsWonThisMonth = visibleLeads.filter((l) => {
       const d = tsToDate(l.wonAt);
       return l.status === "Won" && !!d && d >= monthStart;
     }).length;
 
-    const pipelineValue = leads.items.reduce((sum, l) => {
+    const pipelineValue = visibleLeads.reduce((sum, l) => {
       return sum + (l.status !== "Lost" && l.status !== "Won" ? (l.valueOmr ?? 0) : 0);
     }, 0);
 
@@ -70,7 +89,7 @@ export default function DashboardPage() {
       dealsWonThisMonth,
       pipelineValue,
     };
-  }, [activities.items, leads.items, tasks.items, todayStart, monthStart]);
+  }, [activities.items, leads.items, tasks.items, todayStart, monthStart, isAgent, profile?.uid]);
 
   if (loading) {
     return (

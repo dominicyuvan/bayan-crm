@@ -44,7 +44,9 @@ export default function LeadsPage() {
   const leads = useLeads();
   const contacts = useContacts();
   const team = useTeamMembers();
-  const isManager = profile?.role === "manager";
+  const role = profile?.role ?? "agent";
+  const isAdmin = role === "admin";
+  const isManager = role === "manager" || isAdmin;
 
   const [q, setQ] = React.useState("");
   const [status, setStatus] = React.useState<typeof STATUSES[number]>("all");
@@ -60,6 +62,9 @@ export default function LeadsPage() {
   const filtered = React.useMemo(() => {
     const query = q.trim().toLowerCase();
     return leads.items.filter((l) => {
+      if (role === "agent" && l.assignedRepId && l.assignedRepId !== profile?.uid) {
+        return false;
+      }
       const c = contacts.items.find((cc) => cc.id === l.contactId);
       const contactName = c ? `${c.firstName} ${c.lastName}`.toLowerCase() : "";
       const pt = (l.propertyType ?? "").toLowerCase();
@@ -74,7 +79,7 @@ export default function LeadsPage() {
       const matchesRep = rep === "all" || l.assignedRepId === rep;
       return matchesQ && matchesStatus && matchesTemp && matchesRep;
     });
-  }, [leads.items, contacts.items, q, status, temp, rep]);
+  }, [leads.items, contacts.items, q, status, temp, rep, role, profile?.uid]);
 
   return (
     <div className="space-y-4">

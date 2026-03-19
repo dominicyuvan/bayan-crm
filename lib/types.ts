@@ -1,6 +1,6 @@
 import type { Timestamp } from "firebase/firestore";
 
-export type UserRole = "manager" | "agent";
+export type UserRole = "admin" | "manager" | "agent";
 
 export interface UserProfile {
   id?: string;
@@ -112,7 +112,9 @@ export interface TeamMember {
   email: string;
   displayName: string;
   initials: string;
-  role: UserRole;
+  role: "admin" | "manager" | "sales_executive" | "agent";
+  phone?: string;
+  status?: "active" | "inactive";
   isActive: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;

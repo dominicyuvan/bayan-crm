@@ -21,6 +21,7 @@ type NavItem = {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   managerOnly?: boolean;
+  adminOnly?: boolean;
 };
 
 const navItems: NavItem[] = [
@@ -28,14 +29,24 @@ const navItems: NavItem[] = [
   { href: "/contacts", label: "Contacts", icon: Building2Icon },
   { href: "/leads", label: "Leads", icon: WorkflowIcon },
   { href: "/tasks", label: "Tasks", icon: CalendarClockIcon },
-  { href: "/cadences", label: "Cadences", icon: Settings2Icon },
-  { href: "/team", label: "Team", icon: UsersIcon, managerOnly: true },
-  { href: "/reports", label: "Reports", icon: BarChart3Icon, managerOnly: true },
+  {
+    href: "/cadences",
+    label: "Cadences",
+    icon: Settings2Icon,
+    managerOnly: true,
+  },
+  { href: "/team", label: "Team", icon: UsersIcon, adminOnly: true },
+  {
+    href: "/reports",
+    label: "Reports",
+    icon: BarChart3Icon,
+    managerOnly: true,
+  },
   {
     href: "/integrations",
     label: "Integrations",
     icon: Settings2Icon,
-    managerOnly: true,
+    adminOnly: true,
   },
 ];
 
@@ -49,7 +60,9 @@ export function AppSidebar({
   activePath: string;
 }) {
   const { profile } = useAuth();
-  const isManager = profile?.role === "manager";
+  const role = profile?.role ?? "agent";
+  const isAdmin = role === "admin";
+  const isManager = role === "manager" || isAdmin;
 
   return (
     <aside
@@ -76,7 +89,11 @@ export function AppSidebar({
 
       <nav className="flex-1 space-y-1 px-2">
         {navItems
-          .filter((i) => (i.managerOnly ? isManager : true))
+          .filter((i) => {
+            if (i.adminOnly) return isAdmin;
+            if (i.managerOnly) return isManager;
+            return true;
+          })
           .map((item) => {
             const active = activePath === item.href;
             const Icon = item.icon;

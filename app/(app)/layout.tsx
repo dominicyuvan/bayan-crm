@@ -8,6 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { TopBar } from "@/components/top-bar";
 import { LogActivityFab } from "@/components/log-activity-fab";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AuthGuard } from "@/components/auth-guard";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -59,7 +60,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         />
         <div className="min-w-0">
           <TopBar />
-          <main className="p-4 sm:p-6">{children}</main>
+          <main className="p-4 sm:p-6">
+            <AuthGuard>{children}</AuthGuard>
+          </main>
         </div>
       </div>
 
