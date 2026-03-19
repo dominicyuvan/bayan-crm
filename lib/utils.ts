@@ -19,3 +19,37 @@ export function whatsappLink(phone: string) {
   const digits = phone.replace(/[^\d]/g, "");
   return `https://wa.me/${digits}`;
 }
+
+export async function fireConfetti() {
+  const confetti = (await import("canvas-confetti")).default;
+
+  // First burst
+  confetti({
+    particleCount: 100,
+    spread: 70,
+    origin: { y: 0.6 },
+    colors: ["#1C1C1E", "#52525B", "#2563EB", "#16A34A", "#D97706"],
+  });
+
+  // Second burst after 150ms
+  setTimeout(() => {
+    confetti({
+      particleCount: 50,
+      angle: 60,
+      spread: 55,
+      origin: { x: 0 },
+      colors: ["#1C1C1E", "#16A34A", "#2563EB"],
+    });
+  }, 150);
+
+  // Third burst
+  setTimeout(() => {
+    confetti({
+      particleCount: 50,
+      angle: 120,
+      spread: 55,
+      origin: { x: 1 },
+      colors: ["#1C1C1E", "#16A34A", "#2563EB"],
+    });
+  }, 300);
+}

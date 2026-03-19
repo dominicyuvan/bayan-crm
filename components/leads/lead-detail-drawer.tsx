@@ -16,7 +16,7 @@ import {
 import { toast } from "sonner";
 import { db } from "@/lib/firebase";
 import type { Activity, Lead, LeadStatus } from "@/lib/types";
-import { formatOMR, whatsappLink } from "@/lib/utils";
+import { fireConfetti, formatOMR, whatsappLink } from "@/lib/utils";
 import { tsToDate } from "@/lib/firestore";
 import { useContacts } from "@/lib/firestore-provider";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -262,8 +262,31 @@ export function LeadDetailDrawer({
         valueOmr: parsed,
         status,
         updatedAt: serverTimestamp() as unknown as Timestamp,
+        ...(status.toLowerCase() === "won" || status.toLowerCase() === "lost"
+          ? { closedAt: serverTimestamp() }
+          : { closedAt: null }),
       });
-      toast.success("Lead updated");
+      if (status.toLowerCase() === "won") {
+        await fireConfetti();
+        const value = parsed ?? lead.value ?? lead.valueOmr ?? 0;
+        const contactName = contact
+          ? `${contact.firstName} ${contact.lastName}`.trim()
+          : lead.contactName || "Deal";
+        toast.success(`🎉 Deal Won! ${contactName}`, {
+          description:
+            value > 0
+              ? `OMR ${value.toLocaleString("en-US", { minimumFractionDigits: 3 })} closed!`
+              : "Congratulations on closing the deal!",
+          duration: 6000,
+        });
+      } else if (status.toLowerCase() === "lost") {
+        toast.info("Lead marked as lost", {
+          description: "You can re-engage this contact later",
+          duration: 3000,
+        });
+      } else {
+        toast.success("Lead updated");
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Update failed");
     } finally {

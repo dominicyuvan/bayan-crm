@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { addDays, startOfDay, startOfMonth } from "date-fns";
+import { addDays, startOfDay } from "date-fns";
 import {
   collection,
   doc,
@@ -14,7 +14,7 @@ import { useAuth } from "@/lib/auth-context";
 import { db } from "@/lib/firebase";
 import { useActivities, useContacts, useLeads, useTasks } from "@/lib/firestore-provider";
 import { firestore, tsToDate } from "@/lib/firestore";
-import { cn, formatOMR } from "@/lib/utils";
+import { cn, fireConfetti, formatOMR } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +42,7 @@ import {
   Sparkles,
   RefreshCw,
   CheckCircle2,
+  Trophy,
 } from "lucide-react";
 import { AddContactModal } from "@/components/contacts/add-contact-modal";
 import { AddLeadModal } from "@/components/leads/add-lead-modal";
@@ -216,7 +217,6 @@ export default function DashboardPage() {
   const loading = contacts.loading || leads.loading || activities.loading || tasks.loading;
 
   const todayStart = React.useMemo(() => startOfDay(new Date()), []);
-  const monthStart = React.useMemo(() => startOfMonth(new Date()), []);
 
   const contactById = React.useMemo(() => {
     const map = new Map<string, (typeof contacts.items)[number]>();
@@ -316,11 +316,6 @@ export default function DashboardPage() {
       }
     ).length;
 
-    const dealsWonThisMonth = visibleLeads.filter((l) => {
-      const d = tsToDate(l.wonAt);
-      return l.status === "Won" && !!d && d >= monthStart;
-    }).length;
-
     const pipelineValue = visibleLeads.reduce((sum, l) => {
       return sum + (l.status !== "Lost" && l.status !== "Won" ? (l.valueOmr ?? 0) : 0);
     }, 0);
@@ -329,11 +324,46 @@ export default function DashboardPage() {
       contactsMadeToday,
       siteVisitsToday: siteVisits,
       followUpsToday,
-      dealsWonThisMonth,
       pipelineValue,
       todayActivities,
     };
-  }, [activities.items, leads.items, tasks.items, todayStart, monthStart, isAgent, profile?.uid]);
+  }, [activities.items, leads.items, tasks.items, todayStart, isAgent, profile?.uid]);
+
+  const dealsWon = React.useMemo(() => {
+    const thisMonthStart = new Date();
+    thisMonthStart.setDate(1);
+    thisMonthStart.setHours(0, 0, 0, 0);
+
+    return leads.items.filter((l) => {
+      if (l.status.toLowerCase() !== "won") return false;
+      if (profile?.role === "agent" && l.assignedToUid !== profile.uid) return false;
+      const closedDate =
+        tsToDate(l.closedAt) ??
+        tsToDate((l as unknown as { closedAt?: typeof l.updatedAt }).closedAt) ??
+        tsToDate(l.updatedAt) ??
+        null;
+      if (!closedDate) return true;
+      return closedDate >= thisMonthStart;
+    });
+  }, [leads.items, profile]);
+
+  const dealsWonCount = dealsWon.length;
+  const dealsWonValue = dealsWon.reduce(
+    (sum, l) => sum + (l.value ?? l.valueOmr ?? 0),
+    0
+  );
+  const prevDealsWonCount = React.useRef(dealsWonCount);
+
+  React.useEffect(() => {
+    if (dealsWonCount > prevDealsWonCount.current && prevDealsWonCount.current > 0) {
+      void fireConfetti();
+      toast.success("🎉 Deal closed!", {
+        description: "The pipeline is growing!",
+        duration: 4000,
+      });
+    }
+    prevDealsWonCount.current = dealsWonCount;
+  }, [dealsWonCount]);
 
   const personalTodayActivities = React.useMemo(() => {
     if (!profile?.uid) return [];
@@ -1272,7 +1302,15 @@ export default function DashboardPage() {
         >
           <KpiCard
             label="Deals Won this month"
-            value={kpis.dealsWonThisMonth}
+            value={dealsWonCount}
+            subtext={
+              dealsWonCount > 0
+                ? `OMR ${dealsWonValue.toLocaleString("en-US", {
+                    minimumFractionDigits: 3,
+                  })}`
+                : "Close your first deal!"
+            }
+            icon={Trophy}
             className="cursor-pointer transition-all hover:border-primary/30 hover:shadow-md"
           />
         </Link>

@@ -6,7 +6,7 @@ import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";
 import { useContacts, useLeads, useTeamMembers } from "@/lib/firestore-provider";
 import type { LeadStatus, LeadTemperature } from "@/lib/types";
-import { formatOMR } from "@/lib/utils";
+import { fireConfetti, formatOMR } from "@/lib/utils";
 import { AddLeadModal } from "@/components/leads/add-lead-modal";
 import { LeadDetailDrawer } from "@/components/leads/lead-detail-drawer";
 import { Badge } from "@/components/ui/badge";
@@ -115,14 +115,45 @@ export default function LeadsPage() {
     [leads.items, selectedId]
   );
 
-  async function updateLeadStatus(leadId: string, next: LeadStatus) {
+  async function updateLeadStatus(lead: (typeof leads.items)[number], next: LeadStatus) {
+    if (!lead.id) return;
+    const normalized = next.toLowerCase();
     try {
-      await updateDoc(doc(db, "leads", leadId), {
+      await updateDoc(doc(db, "leads", lead.id), {
         status: next,
         updatedAt: serverTimestamp(),
+        ...(normalized === "won" || normalized === "lost"
+          ? { closedAt: serverTimestamp() }
+          : { closedAt: null }),
       });
-      toast.success(`Lead marked as ${next}`);
+
+      if (normalized === "won") {
+        await fireConfetti();
+        const value = lead.value ?? lead.valueOmr ?? 0;
+        const contactName =
+          lead.contactName ||
+          (contacts.items.find((c) => c.id === lead.contactId)
+            ? `${contacts.items.find((c) => c.id === lead.contactId)?.firstName ?? ""} ${
+                contacts.items.find((c) => c.id === lead.contactId)?.lastName ?? ""
+              }`.trim()
+            : "Deal");
+        toast.success(`🎉 Deal Won! ${contactName}`, {
+          description:
+            value > 0
+              ? `OMR ${value.toLocaleString("en-US", { minimumFractionDigits: 3 })} closed!`
+              : "Congratulations on closing the deal!",
+          duration: 6000,
+        });
+      } else if (normalized === "lost") {
+        toast.info("Lead marked as lost", {
+          description: "You can re-engage this contact later",
+          duration: 3000,
+        });
+      } else {
+        toast.success(`Lead marked as ${next}`);
+      }
     } catch (err) {
+      console.error("Error updating lead status:", err);
       toast.error(err instanceof Error ? err.message : "Failed to update lead");
     }
   }
@@ -268,7 +299,7 @@ export default function LeadsPage() {
                     onClick={(ev) => {
                       ev.stopPropagation();
                       if (!lead.id) return;
-                      void updateLeadStatus(lead.id, s);
+                      void updateLeadStatus(lead, s);
                       setMobileStatusLeadId(null);
                     }}
                   >
@@ -489,7 +520,7 @@ export default function LeadsPage() {
                                   ev.preventDefault();
                                   ev.stopPropagation();
                                   if (!l.id) return;
-                                  void updateLeadStatus(l.id, s);
+                                  void updateLeadStatus(l, s);
                                 }}
                               >
                                 {s}
@@ -596,7 +627,7 @@ export default function LeadsPage() {
                               onClick={(ev) => {
                                 ev.stopPropagation();
                                 if (!l.id) return;
-                                void updateLeadStatus(l.id, s);
+                                void updateLeadStatus(l, s);
                                 setMobileStatusLeadId(null);
                               }}
                             >

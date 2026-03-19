@@ -60,8 +60,12 @@ export type LeadTemperature = "cold" | "warm" | "hot";
 export interface Lead {
   id?: string;
   contactId: string;
+  contactName?: string;
+  contactPhone?: string;
+  company?: string;
   propertyType?: string;
   location?: string;
+  value?: number | null;
   valueOmr?: number | null;
   status: LeadStatus;
   temperature?: LeadTemperature;
@@ -77,8 +81,11 @@ export interface Lead {
   createdAt: Timestamp;
   updatedAt: Timestamp;
   lastContactAt?: Timestamp;
+  lastContactedAt?: Timestamp;
+  closedAt?: Timestamp | null;
   wonAt?: Timestamp;
   lostAt?: Timestamp;
+  generatedAt?: Timestamp;
 }
 
 export type ActivityType =
