@@ -20,9 +20,8 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
           isMobile
             ? "flex min-h-dvh flex-col"
             : sidebarCollapsed
-              ? "grid min-h-dvh grid-cols-[72px_1fr]"
-              : "grid min-h-dvh grid-cols-[260px_1fr]"
-            }
+            ? "grid min-h-dvh grid-cols-[72px_1fr]"
+            : "grid min-h-dvh grid-cols-[260px_1fr]"
         }
       >
         <AppSidebar

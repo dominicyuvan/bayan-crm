@@ -16,7 +16,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useLogActivity } from "@/lib/log-activity-context";
 
 type Mode = "activity" | "task";
 
@@ -105,7 +104,6 @@ export function LogActivityFab() {
   }
 
   const isMobile = useIsMobile();
-  const { open, setOpen } = useLogActivity();
 
   const sheetBody = (
     <div className="grid gap-4">
