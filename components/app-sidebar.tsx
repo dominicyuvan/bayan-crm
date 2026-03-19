@@ -54,10 +54,12 @@ export function AppSidebar({
   collapsed,
   onToggleCollapsed,
   activePath,
+  hideCollapseOnMobile = false,
 }: {
   collapsed: boolean;
   onToggleCollapsed: () => void;
   activePath: string;
+  hideCollapseOnMobile?: boolean;
 }) {
   const { profile } = useAuth();
   const role = profile?.role ?? "agent";
@@ -76,15 +78,17 @@ export function AppSidebar({
           <div className="text-sm font-semibold tracking-tight">Bayan CRM</div>
           <div className="text-xs text-white/60">Sales workspace</div>
         </div>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          className="text-white/80 hover:bg-white/10 hover:text-white"
-          onClick={onToggleCollapsed}
-        >
-          <ChevronsLeftRightIcon className="size-4" />
-          <span className="sr-only">Toggle sidebar</span>
-        </Button>
+        {!hideCollapseOnMobile && (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            className="text-white/80 hover:bg-white/10 hover:text-white"
+            onClick={onToggleCollapsed}
+          >
+            <ChevronsLeftRightIcon className="size-4" />
+            <span className="sr-only">Toggle sidebar</span>
+          </Button>
+        )}
       </div>
 
       <nav className="flex-1 space-y-1 px-2">

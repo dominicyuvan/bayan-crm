@@ -16,6 +16,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { Check } from "lucide-react";
 
 export default function TasksPage() {
   const { profile } = useAuth();
@@ -31,6 +33,7 @@ export default function TasksPage() {
   const [completingId, setCompletingId] = React.useState<string | null>(null);
 
   const today = React.useMemo(() => startOfDay(new Date()), []);
+  const isMobile = useIsMobile();
 
   const tasks = React.useMemo(() => {
     return tasksState.items.filter((t) => {
@@ -153,6 +156,67 @@ export default function TasksPage() {
     );
   }
 
+  function MobileTaskCard({
+    task,
+    onComplete,
+  }: {
+    task: (typeof tasks)[number];
+    onComplete: (id: string) => void;
+  }) {
+    const isDone = task.status === "completed";
+    const due = tsToDate(task.dueAt);
+    const isOverdue = !isDone && !!due && isBefore(due, today);
+    const contact =
+      task.contactId && contacts.items.find((c) => c.id === task.contactId);
+    return (
+      <div
+        className={`rounded-xl border bg-card p-4 ${
+          isOverdue ? "border-l-4 border-l-red-500" : "border-border"
+        } ${isDone ? "opacity-50" : ""}`}
+      >
+        <div className="flex items-start gap-3">
+          <button
+            onClick={() => !isDone && onComplete(task.id)}
+            className={`mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 ${
+              isDone ? "border-primary bg-primary" : "border-muted-foreground"
+            }`}
+          >
+            {isDone && <Check className="h-3 w-3 text-white" />}
+          </button>
+          <div className="min-w-0 flex-1">
+            <p
+              className={`text-sm font-medium ${
+                isDone ? "line-through text-muted-foreground" : ""
+              }`}
+            >
+              {task.title || task.type}
+            </p>
+            {contact && (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {contact.firstName} {contact.lastName}
+              </p>
+            )}
+            <div className="mt-2 flex items-center gap-2 text-xs">
+              <span
+                className={
+                  isOverdue
+                    ? "font-medium text-red-600"
+                    : "text-muted-foreground"
+                }
+              >
+                {isOverdue
+                  ? "⚠️ Overdue"
+                  : due
+                  ? due.toLocaleString()
+                  : ""}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (tasksState.loading) {
     return (
       <div className="space-y-4">
@@ -208,12 +272,29 @@ export default function TasksPage() {
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-4">
-        <TaskColumn title="Overdue" tasks={grouped.overdue} tone="danger" />
-        <TaskColumn title="Today" tasks={grouped.today} />
-        <TaskColumn title="Upcoming" tasks={grouped.upcoming} />
-        <TaskColumn title="Completed" tasks={grouped.completed} />
-      </div>
+      {isMobile ? (
+        <div className="space-y-2">
+          {tasks.map((t) => (
+            <MobileTaskCard
+              key={t.id}
+              task={t}
+              onComplete={completeTask}
+            />
+          ))}
+          {tasks.length === 0 && (
+            <div className="rounded-xl border bg-card p-6 text-center text-sm text-muted-foreground">
+              No tasks.
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-4">
+          <TaskColumn title="Overdue" tasks={grouped.overdue} tone="danger" />
+          <TaskColumn title="Today" tasks={grouped.today} />
+          <TaskColumn title="Upcoming" tasks={grouped.upcoming} />
+          <TaskColumn title="Completed" tasks={grouped.completed} />
+        </div>
+      )}
     </div>
   );
 }

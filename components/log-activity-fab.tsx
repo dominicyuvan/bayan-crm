@@ -14,6 +14,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useLogActivity } from "@/lib/log-activity-context";
 
 type Mode = "activity" | "task";
 
@@ -101,122 +104,140 @@ export function LogActivityFab() {
     }
   }
 
-  return (
-    <>
-      <Button
-        size="icon-lg"
-        className="fixed bottom-5 right-5 z-50 shadow-lg"
-        onClick={() => setOpen(true)}
-      >
-        <PlusIcon className="size-5" />
-        <span className="sr-only">Log activity or schedule task</span>
+  const isMobile = useIsMobile();
+  const { open, setOpen } = useLogActivity();
+
+  const sheetBody = (
+    <div className="grid gap-4">
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          variant={mode === "activity" ? "default" : "outline"}
+          onClick={() => setMode("activity")}
+          className="flex-1"
+        >
+          Log Activity
+        </Button>
+        <Button
+          type="button"
+          variant={mode === "task" ? "default" : "outline"}
+          onClick={() => setMode("task")}
+          className="flex-1"
+        >
+          Schedule Task
+        </Button>
+      </div>
+
+      <div className="grid gap-2">
+        <Label>Title</Label>
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+      </div>
+
+      <div className="grid gap-2">
+        <Label>Contact</Label>
+        <Select value={contactId} onValueChange={(v) => setContactId(v)}>
+          <SelectTrigger>
+            <SelectValue placeholder="Optional" />
+          </SelectTrigger>
+          <SelectContent>
+            {contacts.items.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.firstName} {c.lastName} {c.company ? `• ${c.company}` : ""}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid gap-2">
+        <Label>Lead</Label>
+        <Select value={leadId} onValueChange={(v) => setLeadId(v)}>
+          <SelectTrigger>
+            <SelectValue placeholder="Optional" />
+          </SelectTrigger>
+          <SelectContent>
+            {leads.items.map((l) => (
+              <SelectItem key={l.id} value={l.id}>
+                {(l.propertyType ?? "Lead") + (l.location ? ` • ${l.location}` : "")}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {mode === "task" && (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label>Due date</Label>
+              <Input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Due time</Label>
+              <Input
+                type="time"
+                value={dueTime}
+                onChange={(e) => setDueTime(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="grid gap-2">
+            <Label>Assigned to</Label>
+            <Select value={assignedToId} onValueChange={(v) => setAssignedToId(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select rep" />
+              </SelectTrigger>
+              <SelectContent>
+                {team.items.map((m) => (
+                  <SelectItem key={m.id} value={m.id ?? m.email}>
+                    {m.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </>
+      )}
+
+      <div className="grid gap-2">
+        <Label>Notes</Label>
+        <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
+      </div>
+
+      <Button onClick={onSave} disabled={submitting} className="w-full">
+        Save
       </Button>
+    </div>
+  );
 
-      <Dialog open={open} onOpenChange={(v) => (setOpen(v), !v && reset())}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Quick add</DialogTitle>
-          </DialogHeader>
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={(v) => (setOpen(v), !v && reset())}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>
+              {mode === "activity" ? "Log Activity" : "Schedule Task"}
+            </DrawerTitle>
+          </DrawerHeader>
+          <div className="px-4 pb-4">{sheetBody}</div>
+        </DrawerContent>
+      </Drawer>
+    );
+  }
 
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant={mode === "activity" ? "default" : "outline"}
-              onClick={() => setMode("activity")}
-              className="flex-1"
-            >
-              Log Activity
-            </Button>
-            <Button
-              type="button"
-              variant={mode === "task" ? "default" : "outline"}
-              onClick={() => setMode("task")}
-              className="flex-1"
-            >
-              Schedule Task
-            </Button>
-          </div>
-
-          <div className="grid gap-4">
-            <div className="grid gap-2">
-              <Label>Title</Label>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} />
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Contact</Label>
-              <Select value={contactId} onValueChange={(v) => setContactId(v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Optional" />
-                </SelectTrigger>
-                <SelectContent>
-                  {contacts.items.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.firstName} {c.lastName} {c.company ? `• ${c.company}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Lead</Label>
-              <Select value={leadId} onValueChange={(v) => setLeadId(v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Optional" />
-                </SelectTrigger>
-                <SelectContent>
-                  {leads.items.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>
-                      {(l.propertyType ?? "Lead") + (l.location ? ` • ${l.location}` : "")}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {mode === "task" && (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="grid gap-2">
-                    <Label>Due date</Label>
-                    <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Due time</Label>
-                    <Input type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} />
-                  </div>
-                </div>
-                <div className="grid gap-2">
-                  <Label>Assigned to</Label>
-                  <Select value={assignedToId} onValueChange={(v) => setAssignedToId(v)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select rep" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {team.items.map((m) => (
-                        <SelectItem key={m.id} value={m.id ?? m.email}>
-                          {m.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
-            )}
-
-            <div className="grid gap-2">
-              <Label>Notes</Label>
-              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
-            </div>
-
-            <Button onClick={onSave} disabled={submitting}>
-              Save
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
+  return (
+    <Dialog open={open} onOpenChange={(v) => (setOpen(v), !v && reset())}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Quick add</DialogTitle>
+        </DialogHeader>
+        {sheetBody}
+      </DialogContent>
+    </Dialog>
   );
 }
 

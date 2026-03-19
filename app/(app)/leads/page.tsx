@@ -13,6 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { ChevronRight } from "lucide-react";
 
 const STATUSES: Array<LeadStatus | "all"> = [
   "all",
@@ -52,6 +54,7 @@ export default function LeadsPage() {
   const [status, setStatus] = React.useState<typeof STATUSES[number]>("all");
   const [temp, setTemp] = React.useState<typeof TEMPS[number]>("all");
   const [rep, setRep] = React.useState<string>("all");
+  const isMobile = useIsMobile();
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const selected = React.useMemo(
@@ -80,6 +83,71 @@ export default function LeadsPage() {
       return matchesQ && matchesStatus && matchesTemp && matchesRep;
     });
   }, [leads.items, contacts.items, q, status, temp, rep, role, profile?.uid]);
+
+  function MobileLeadCard({
+    lead,
+    onClick,
+  }: {
+    lead: (typeof leads.items)[number];
+    onClick: (l: (typeof leads.items)[number]) => void;
+  }) {
+    const tempColors: Record<string, string> = {
+      hot: "bg-red-500",
+      warm: "bg-amber-400",
+      cold: "bg-slate-400",
+    };
+    const statusColors: Record<string, string> = {
+      New: "bg-blue-100 text-blue-700",
+      Contacted: "bg-amber-100 text-amber-700",
+      Qualified: "bg-purple-100 text-purple-700",
+      Won: "bg-green-100 text-green-700",
+      Lost: "bg-red-100 text-red-700",
+    };
+    const contact = contacts.items.find((c) => c.id === lead.contactId);
+    const repName =
+      team.items.find((m) => m.id === lead.assignedRepId)?.name ?? "Unassigned";
+    const valueStr =
+      typeof lead.valueOmr === "number" ? lead.valueOmr.toFixed(3) : "0.000";
+    return (
+      <div
+        onClick={() => onClick(lead)}
+        className="cursor-pointer rounded-xl border border-border bg-card p-4 active:bg-muted"
+      >
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-2">
+            <span
+              className={`mt-1.5 h-2 w-2 rounded-full ${
+                tempColors[lead.temperature ?? "cold"]
+              }`}
+            />
+            <div>
+              <p className="text-sm font-semibold">
+                {contact
+                  ? `${contact.firstName} ${contact.lastName}`
+                  : "Lead"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {lead.propertyType ?? "Lead"} · {lead.location ?? "—"}
+              </p>
+            </div>
+          </div>
+          <span
+            className={`rounded-full px-2 py-1 text-xs font-medium ${
+              statusColors[lead.status] ?? "bg-muted text-foreground"
+            }`}
+          >
+            {lead.status}
+          </span>
+        </div>
+        <div className="mt-3 flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">{repName}</span>
+          <span className="font-mono text-sm font-semibold">
+            OMR {valueStr}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -162,6 +230,21 @@ export default function LeadsPage() {
         <div className="space-y-3">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-40 w-full" />
+        </div>
+      ) : isMobile ? (
+        <div className="grid gap-3">
+          {filtered.map((l) => (
+            <MobileLeadCard
+              key={l.id}
+              lead={l}
+              onClick={(lead) => setSelectedId(lead.id)}
+            />
+          ))}
+          {filtered.length === 0 && (
+            <div className="rounded-xl border bg-card p-6 text-center text-sm text-muted-foreground">
+              No leads found.
+            </div>
+          )}
         </div>
       ) : (
         <>

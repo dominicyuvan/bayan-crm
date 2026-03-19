@@ -157,3 +157,22 @@
 *::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* Safe area for iPhone home indicator */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Mobile: 44px tap targets, 16px input font to prevent iOS zoom */
+@media (max-width: 768px) {
+  .btn,
+  button[class*="inline-flex"] {
+    min-height: 44px;
+  }
+  input,
+  textarea,
+  select {
+    min-height: 44px;
+    font-size: 16px;
+  }
+}

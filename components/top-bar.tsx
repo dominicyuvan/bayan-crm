@@ -2,15 +2,12 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import {
-  BellIcon,
-  LogOutIcon,
-  SearchIcon,
-} from "lucide-react";
+import { BellIcon, LogOutIcon, SearchIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { useContacts, useLeads, useTasks } from "@/lib/firestore-provider";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -31,6 +28,7 @@ export function TopBar() {
   const contacts = useContacts();
   const leads = useLeads();
   const tasks = useTasks();
+  const isMobile = useIsMobile();
 
   const [q, setQ] = React.useState("");
   const [open, setOpen] = React.useState(false);
@@ -98,48 +96,54 @@ export function TopBar() {
   return (
     <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur supports-backdrop-filter:bg-background/60">
       <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
-        <div className="relative w-full max-w-xl">
-          <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={q}
-            onChange={(e) => {
-              setQ(e.target.value);
-              setOpen(true);
-            }}
-            onFocus={() => setOpen(true)}
-            placeholder="Search contacts & leads..."
-            className="pl-9"
-          />
-          {open && results.length > 0 && (
-            <div className="absolute left-0 right-0 top-[calc(100%+8px)] rounded-xl border bg-popover p-1 shadow-lg">
-              {results.map((r) => (
-                <button
-                  key={`${r.type}-${r.id}`}
-                  className={cn(
-                    "flex w-full items-start gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-muted"
-                  )}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => goToResult(r)}
-                >
-                  <div className="min-w-0">
-                    <div className="truncate font-medium">{r.title}</div>
-                    {r.subtitle && (
-                      <div className="truncate text-xs text-muted-foreground">
-                        {r.subtitle}
-                      </div>
+        {isMobile ? (
+          <div className="text-base font-semibold tracking-tight">
+            Bayan CRM
+          </div>
+        ) : (
+          <div className="relative w-full max-w-xl">
+            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={q}
+              onChange={(e) => {
+                setQ(e.target.value);
+                setOpen(true);
+              }}
+              onFocus={() => setOpen(true)}
+              placeholder="Search contacts & leads..."
+              className="pl-9"
+            />
+            {open && results.length > 0 && (
+              <div className="absolute left-0 right-0 top-[calc(100%+8px)] rounded-xl border bg-popover p-1 shadow-lg">
+                {results.map((r) => (
+                  <button
+                    key={`${r.type}-${r.id}`}
+                    className={cn(
+                      "flex w-full items-start gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-muted"
                     )}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => goToResult(r)}
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">{r.title}</div>
+                      {r.subtitle && (
+                        <div className="truncate text-xs text-muted-foreground">
+                          {r.subtitle}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <Button
             variant="outline"
             size="icon-sm"
-            className="relative"
+            className="relative min-h-[44px]"
             onClick={() => router.push("/tasks")}
           >
             <BellIcon className="size-4" />
@@ -153,7 +157,11 @@ export function TopBar() {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" className="rounded-full">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="rounded-full min-h-[44px]"
+              >
                 <Avatar className="size-8">
                   <AvatarFallback>
                     {profile?.initials ?? "U"}

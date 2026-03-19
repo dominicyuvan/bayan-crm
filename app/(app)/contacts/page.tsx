@@ -12,6 +12,9 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { Phone, MessageCircle, ChevronRight } from "lucide-react";
+import { whatsappLink } from "@/lib/utils";
 
 export default function ContactsPage() {
   const { profile } = useAuth();
@@ -24,6 +27,7 @@ export default function ContactsPage() {
   const [q, setQ] = React.useState("");
   const [source, setSource] = React.useState<string>("all");
   const [rep, setRep] = React.useState<string>("all");
+  const isMobile = useIsMobile();
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const selected = React.useMemo(() => {
@@ -52,6 +56,59 @@ export default function ContactsPage() {
       return matchesQ && matchesSource && matchesRep;
     });
   }, [contacts.items, q, source, rep, role, profile?.uid]);
+
+  function MobileContactCard({
+    contact,
+    onClick,
+  }: {
+    contact: (typeof contacts.items)[number];
+    onClick: (c: (typeof contacts.items)[number]) => void;
+  }) {
+    const initials = `${contact.firstName?.[0] ?? ""}${contact.lastName?.[0] ?? ""}`;
+    return (
+      <div
+        onClick={() => onClick(contact)}
+        className="cursor-pointer rounded-xl border border-border bg-card p-4 active:bg-muted transition-colors"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+              {initials || "B"}
+            </div>
+            <div>
+              <p className="text-sm font-semibold">
+                {contact.firstName} {contact.lastName}
+              </p>
+              <p className="text-xs text-muted-foreground">{contact.company ?? "—"}</p>
+            </div>
+          </div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </div>
+        <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
+          {contact.phone && (
+            <a
+              href={`tel:${contact.phone}`}
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-1 rounded-full bg-muted px-3 py-1.5"
+            >
+              <Phone className="h-3 w-3" /> {contact.phone}
+            </a>
+          )}
+          {contact.whatsapp && (
+            <a
+              href={whatsappLink(contact.whatsapp)}
+              onClick={(e) => e.stopPropagation()}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1 rounded-full bg-green-50 px-3 py-1.5 text-green-700"
+            >
+              <MessageCircle className="h-3 w-3" /> WhatsApp
+            </a>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -116,6 +173,21 @@ export default function ContactsPage() {
         <div className="space-y-3">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-40 w-full" />
+        </div>
+      ) : isMobile ? (
+        <div className="grid gap-3">
+          {filtered.map((c) => (
+            <MobileContactCard
+              key={c.id}
+              contact={c}
+              onClick={(contact) => setSelectedId(contact.id)}
+            />
+          ))}
+          {filtered.length === 0 && (
+            <div className="rounded-xl border bg-card p-6 text-center text-sm text-muted-foreground">
+              No contacts found.
+            </div>
+          )}
         </div>
       ) : (
         <>
