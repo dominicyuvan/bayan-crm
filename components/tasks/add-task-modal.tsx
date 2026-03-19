@@ -67,6 +67,7 @@ export function AddTaskModal() {
         notes: notes.trim(),
         contactId: contactId || "",
         leadId: leadId || "",
+        assignedToId: assignedToId || profile?.uid || "",
         dueAt: Timestamp.fromDate(dt),
         status: "pending",
         createdAt: serverTimestamp(),
