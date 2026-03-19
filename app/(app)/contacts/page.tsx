@@ -2,11 +2,12 @@
 
 import * as React from "react";
 import { useAuth } from "@/lib/auth-context";
-import { useContacts } from "@/lib/firestore-provider";
+import { useActivities, useContacts } from "@/lib/firestore-provider";
 import { tsToDate } from "@/lib/firestore";
 import { cn } from "@/lib/utils";
 import { AddContactModal } from "@/components/contacts/add-contact-modal";
 import { ContactDetailDrawer } from "@/components/contacts/contact-detail-drawer";
+import { AddLeadModal } from "@/components/leads/add-lead-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -19,6 +20,7 @@ import { whatsappLink } from "@/lib/utils";
 export default function ContactsPage() {
   const { profile } = useAuth();
   const contacts = useContacts();
+  const activities = useActivities();
   const role = profile?.role ?? "agent";
 
   const [q, setQ] = React.useState("");
@@ -26,6 +28,8 @@ export default function ContactsPage() {
   const isMobile = useIsMobile();
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [addLeadOpen, setAddLeadOpen] = React.useState(false);
+  const [preselectedContactId, setPreselectedContactId] = React.useState<string | undefined>(undefined);
   const selected = React.useMemo(() => {
     return contacts.items.find((c) => c.id === selectedId) ?? null;
   }, [contacts.items, selectedId]);
@@ -52,6 +56,21 @@ export default function ContactsPage() {
       return matchesQ && matchesSource;
     });
   }, [contacts.items, q, source, role, profile?.uid]);
+
+  const visibleActivities = React.useMemo(() => {
+    if (!profile?.uid) return [];
+    if (role !== "agent") return activities.items;
+    return activities.items.filter((a) => a.repId === profile.uid);
+  }, [activities.items, role, profile?.uid]);
+
+  const activityCountsByContactId = React.useMemo(() => {
+    const map = new Map<string, number>();
+    for (const a of visibleActivities) {
+      if (!a.contactId) continue;
+      map.set(a.contactId, (map.get(a.contactId) ?? 0) + 1);
+    }
+    return map;
+  }, [visibleActivities]);
 
   function MobileContactCard({
     contact,
@@ -190,7 +209,14 @@ export default function ContactsPage() {
                     onClick={() => setSelectedId(c.id)}
                   >
                     <TableCell className="font-medium">
-                      {c.firstName} {c.lastName}
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="min-w-0 truncate">
+                          {c.firstName} {c.lastName}
+                        </span>
+                        <span className="whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                          {(c.id && activityCountsByContactId.get(c.id)) ?? 0} activities
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell>{c.company ?? "—"}</TableCell>
                     <TableCell>{c.phone}</TableCell>
@@ -202,6 +228,19 @@ export default function ContactsPage() {
                       {tsToDate(c.lastContactAt)?.toLocaleDateString() ?? "—"}
                     </TableCell>
                     <TableCell className="text-right">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mr-2"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!c.id) return;
+                          setPreselectedContactId(c.id);
+                          setAddLeadOpen(true);
+                        }}
+                      >
+                        Convert to Lead
+                      </Button>
                       <Button
                         size="sm"
                         variant="outline"
@@ -253,6 +292,12 @@ export default function ContactsPage() {
           </div>
         </>
       )}
+
+      <AddLeadModal
+        preselectedContactId={preselectedContactId}
+        externalOpen={addLeadOpen}
+        onExternalOpenChange={setAddLeadOpen}
+      />
 
       <ContactDetailDrawer
         contact={selected}

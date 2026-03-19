@@ -12,7 +12,10 @@ import {
 } from "firebase/auth";
 import {
   doc,
-  getDoc,
+  getDocs,
+  collection,
+  query,
+  where,
   serverTimestamp,
   setDoc,
   type Timestamp,
@@ -39,19 +42,27 @@ function getInitials(displayName: string, email: string) {
 
 async function resolveUserRole(user: User): Promise<UserRole> {
   const email = (user.email ?? "").toLowerCase();
-  if (ADMIN_EMAILS.has(email)) return "admin";
 
-  const memberRef = doc(db, "team_members", user.uid);
-  const snap = await getDoc(memberRef);
-  if (snap.exists()) {
-    const data = snap.data() as { role?: string | null } | undefined;
-    const rawRole = data?.role ?? null;
+  const teamMemberSnap = await getDocs(
+    query(
+      collection(db, "team_members"),
+      where("email", "==", email)
+    )
+  );
+
+  if (!teamMemberSnap.empty) {
+    const memberData = teamMemberSnap.docs[0].data() as {
+      role?: string | null;
+    };
+
+    const rawRole = memberData.role ?? null;
     if (rawRole === "admin") return "admin";
     if (rawRole === "manager") return "manager";
-    if (rawRole === "sales_executive" || rawRole === "agent") return "agent";
+    return "agent";
   }
 
-  return "agent";
+  // Fallback: hardcoded admin emails
+  return ADMIN_EMAILS.has(email) ? "admin" : "agent";
 }
 
 async function upsertTeamMemberProfile(user: User) {
@@ -63,6 +74,7 @@ async function upsertTeamMemberProfile(user: User) {
 
   const displayName =
     user.displayName?.trim() || email.split("@")[0] || "Bayan User";
+  const firstName = displayName.split(" ")[0] || "Bayan";
 
   const initials = getInitials(displayName, email);
   const role = await resolveUserRole(user);
@@ -75,6 +87,7 @@ async function upsertTeamMemberProfile(user: User) {
       uid: user.uid,
       email,
       displayName,
+      firstName,
       initials,
       role,
       isActive: true,
@@ -90,6 +103,7 @@ async function upsertTeamMemberProfile(user: User) {
     uid: user.uid,
     email,
     displayName,
+    firstName,
     initials,
     role,
     createdAt: serverTimestamp() as unknown as Timestamp,

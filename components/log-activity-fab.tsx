@@ -6,7 +6,12 @@ import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import { activitiesCol, tasksCol } from "@/lib/firestore";
 import { useAuth } from "@/lib/auth-context";
-import { useContacts, useLeads, useTeamMembers } from "@/lib/firestore-provider";
+import {
+  useActivities,
+  useContacts,
+  useLeads,
+  useTeamMembers,
+} from "@/lib/firestore-provider";
 import type { Activity, Task } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -16,16 +21,32 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { startOfDay } from "date-fns";
+import { tsToDate } from "@/lib/firestore";
 
 type Mode = "activity" | "task";
 
-export function LogActivityFab() {
+export type LogActivityFabProps = {
+  preselectedContactId?: string;
+  preselectedLeadId?: string;
+  externalOpen?: boolean;
+  onExternalOpenChange?: (open: boolean) => void;
+};
+
+export function LogActivityFab({
+  preselectedContactId,
+  preselectedLeadId,
+  externalOpen,
+  onExternalOpenChange,
+}: LogActivityFabProps) {
   const { profile } = useAuth();
+  const activities = useActivities();
   const contacts = useContacts();
   const leads = useLeads();
+  // teamMembers used to populate the "Assigned to" select for scheduling tasks
   const team = useTeamMembers();
 
-  const [open, setOpen] = React.useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
   const [mode, setMode] = React.useState<Mode>("activity");
   const [title, setTitle] = React.useState("");
   const [notes, setNotes] = React.useState("");
@@ -35,10 +56,33 @@ export function LogActivityFab() {
   const [dueTime, setDueTime] = React.useState("");
   const [assignedToId, setAssignedToId] = React.useState<string | "">("");
   const [submitting, setSubmitting] = React.useState(false);
+  const [pulsing, setPulsing] = React.useState(false);
+
+  const isControlled =
+    typeof externalOpen === "boolean" && typeof onExternalOpenChange === "function";
+  const open = isControlled ? externalOpen : uncontrolledOpen;
+
+  const setOpen = React.useCallback(
+    (next: boolean) => {
+      if (isControlled) onExternalOpenChange(next);
+      else setUncontrolledOpen(next);
+    },
+    [isControlled, onExternalOpenChange]
+  );
 
   React.useEffect(() => {
     if (profile?.uid && !assignedToId) setAssignedToId(profile.uid);
   }, [profile?.uid, assignedToId]);
+
+  React.useEffect(() => {
+    if (!preselectedContactId) return;
+    setContactId(preselectedContactId);
+  }, [preselectedContactId]);
+
+  React.useEffect(() => {
+    if (!preselectedLeadId) return;
+    setLeadId(preselectedLeadId);
+  }, [preselectedLeadId]);
 
   function reset() {
     setTitle("");
@@ -60,6 +104,13 @@ export function LogActivityFab() {
     setSubmitting(true);
     try {
       if (mode === "activity") {
+        const todayStart = startOfDay(new Date());
+        const todayCount = activities.items.filter((a) => {
+          const createdBy = (a as unknown as { createdBy?: string }).createdBy ?? a.repId;
+          const d = tsToDate(a.createdAt);
+          return createdBy === profile.uid && !!d && d >= todayStart;
+        }).length;
+
         const payload = {
           type: "note",
           title: title.trim(),
@@ -71,7 +122,12 @@ export function LogActivityFab() {
           createdAt: serverTimestamp(),
         } satisfies WithFieldValue<Activity>;
         await addDoc(activitiesCol, payload);
-        toast.success("Activity logged");
+        toast.success(`Activity logged! 🎯`, {
+          description: `${todayCount + 1} activities today — keep it up!`,
+          duration: 3000,
+        });
+        setPulsing(true);
+        window.setTimeout(() => setPulsing(false), 300);
       } else {
         if (!dueDate) {
           toast.error("Due date is required");
@@ -215,7 +271,13 @@ export function LogActivityFab() {
   if (isMobile) {
     return (
       <>
-        <Drawer open={open} onOpenChange={(v) => (setOpen(v), !v && reset())}>
+        <Drawer
+          open={open}
+          onOpenChange={(v) => {
+            setOpen(v);
+            if (!v) reset();
+          }}
+        >
           <DrawerContent>
             <DrawerHeader>
               <DrawerTitle>
@@ -234,14 +296,22 @@ export function LogActivityFab() {
       {/* Floating button - desktop and tablet only */}
       <Button
         onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-50 hidden h-14 gap-2 rounded-full px-6 shadow-lg hover:shadow-xl md:flex"
+        className={`fixed bottom-6 right-6 z-50 hidden h-14 gap-2 rounded-full px-6 shadow-lg hover:shadow-xl md:flex transition-transform duration-300 ${
+          pulsing ? "scale-110" : "scale-100"
+        }`}
       >
         <Plus className="h-5 w-5" />
         <span>Log Activity</span>
       </Button>
 
       {/* Desktop dialog */}
-      <Dialog open={open} onOpenChange={(v) => (setOpen(v), !v && reset())}>
+      <Dialog
+        open={open}
+        onOpenChange={(v) => {
+          setOpen(v);
+          if (!v) reset();
+        }}
+      >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Quick add</DialogTitle>

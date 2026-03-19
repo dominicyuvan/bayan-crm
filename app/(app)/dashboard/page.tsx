@@ -1,22 +1,43 @@
 "use client";
 
 import * as React from "react";
-import { startOfDay, startOfMonth } from "date-fns";
+import { addDays, startOfDay, startOfMonth } from "date-fns";
+import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
+import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
+import { db } from "@/lib/firebase";
 import { useActivities, useContacts, useLeads, useTasks } from "@/lib/firestore-provider";
 import { tsToDate } from "@/lib/firestore";
 import { formatOMR } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import {
   FileText,
   Mail,
   MapPin,
   MessageSquare,
   Phone,
+  Check,
+  Clock,
+  AlertTriangle,
+  Zap,
   Users,
 } from "lucide-react";
+import { AddContactModal } from "@/components/contacts/add-contact-modal";
+import { AddLeadModal } from "@/components/leads/add-lead-modal";
+import { LeadDetailDrawer } from "@/components/leads/lead-detail-drawer";
+import { useLogActivityControl } from "@/lib/log-activity-control-context";
+import { DEFAULT_CADENCES } from "@/lib/cadence-templates";
+import type { Activity, Lead, Task } from "@/lib/types";
 
 function KpiCard({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -97,6 +118,7 @@ function getActivityVisual(type: string) {
 
 export default function DashboardPage() {
   const { profile } = useAuth();
+  const { setOpen: setLogActivityOpen } = useLogActivityControl();
   const contacts = useContacts();
   const leads = useLeads();
   const activities = useActivities();
@@ -132,6 +154,38 @@ export default function DashboardPage() {
         (t) => t.isOverdue && (!isAgent || t.assignedToId === profile?.uid)
       ),
     [tasks.items, isAgent, profile?.uid]
+  );
+
+  const userFirstName = profile?.firstName || profile?.displayName?.split(" ")[0] || "Bayan";
+
+  const calculateStreak = React.useCallback(
+    (items: Activity[], userId: string) => {
+      if (!userId) return 0;
+      let streak = 0;
+      let checkDate = startOfDay(new Date());
+
+      // Count consecutive days (including today) where the user logged >= 1 activity.
+      while (true) {
+        const hasActivity = items.some((a) => {
+          const createdBy =
+            ((a as unknown as { createdBy?: string }).createdBy ?? a.repId) as
+              | string
+              | undefined;
+          if (!createdBy || createdBy !== userId) return false;
+          const date = tsToDate(a.createdAt);
+          if (!date) return false;
+          const actDate = startOfDay(date);
+          return actDate.getTime() === checkDate.getTime();
+        });
+
+        if (!hasActivity) break;
+        streak += 1;
+        checkDate = addDays(checkDate, -1);
+      }
+
+      return streak;
+    },
+    []
   );
 
   const kpis = React.useMemo(() => {
@@ -204,6 +258,93 @@ export default function DashboardPage() {
     });
   }, [activities.items, profile?.uid, todayStart]);
 
+  const streak = React.useMemo(() => {
+    if (!profile?.uid) return 0;
+    return calculateStreak(activities.items, profile.uid);
+  }, [activities.items, profile?.uid, calculateStreak]);
+
+  const hasActivityToday = personalTodayActivities.length > 0;
+
+  const [onboardingDismissed, setOnboardingDismissed] = React.useState(false);
+  const [onboardingStarted, setOnboardingStarted] = React.useState(false);
+  const [showConfetti, setShowConfetti] = React.useState(false);
+
+  const [leadDrawerOpen, setLeadDrawerOpen] = React.useState(false);
+  const [leadDrawerId, setLeadDrawerId] = React.useState<string | null>(null);
+  const [overdueTaskId, setOverdueTaskId] = React.useState<string | null>(null);
+  const [overdueOutcomeNote, setOverdueOutcomeNote] = React.useState("");
+
+  const selectedLead = React.useMemo(() => {
+    if (!leadDrawerId) return null;
+    return leads.items.find((l) => l.id === leadDrawerId) ?? null;
+  }, [leads.items, leadDrawerId]);
+
+  React.useEffect(() => {
+    try {
+      const v = window.localStorage.getItem("bayan_onboarding_dismissed");
+      setOnboardingDismissed(v === "true");
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const contactsCount = contacts.items.length;
+  const leadsCount = leads.items.length;
+  const activitiesCount = activities.items.length;
+
+  const onboardingProgress = React.useMemo(() => {
+    const contactsDone = contactsCount > 0;
+    const leadsDone = leadsCount > 0;
+    const activitiesDone = activitiesCount > 0;
+    const tasksDone = tasks.items.length > 0;
+    return (
+      (contactsDone ? 1 : 0) +
+      (leadsDone ? 1 : 0) +
+      (activitiesDone ? 1 : 0) +
+      (tasksDone ? 1 : 0)
+    );
+  }, [contactsCount, leadsCount, activitiesCount, tasks.items.length]);
+
+  const noDataYet = contactsCount === 0 && leadsCount === 0 && activitiesCount === 0;
+
+  React.useEffect(() => {
+    if (onboardingDismissed) return;
+    if (onboardingStarted) return;
+    if (!noDataYet) return;
+    setOnboardingStarted(true);
+  }, [onboardingDismissed, onboardingStarted, noDataYet]);
+
+  React.useEffect(() => {
+    if (onboardingDismissed) return;
+    if (!onboardingStarted) return;
+    if (onboardingProgress !== 4) return;
+
+    setShowConfetti(true);
+    try {
+      window.localStorage.setItem("bayan_onboarding_dismissed", "true");
+    } catch {
+      // ignore
+    }
+    setOnboardingStarted(false);
+
+    const t = window.setTimeout(() => setShowConfetti(false), 2600);
+    return () => window.clearTimeout(t);
+  }, [onboardingDismissed, onboardingStarted, onboardingProgress]);
+
+  async function completeTask(taskId: string, outcome: string | null = null) {
+    try {
+      await updateDoc(doc(db, "tasks", taskId), {
+        status: "completed",
+        completedAt: serverTimestamp(),
+        outcome: outcome ?? "",
+        updatedAt: serverTimestamp(),
+      });
+      toast.success("Task completed");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to complete task");
+    }
+  }
+
   const recentActivities = React.useMemo(() => {
     if (!profile?.uid) return [];
     const sorted = [...activities.items]
@@ -256,6 +397,158 @@ export default function DashboardPage() {
     return `Today: ${calls} ${callLabel} · ${siteVisits} ${siteLabel} · ${followUps} ${followLabel}`;
   }, [personalTodayActivities]);
 
+  const focus = React.useMemo(() => {
+    const now = new Date();
+    const todayEnd = addDays(todayStart, 1);
+    const sevenDaysAgo = addDays(todayStart, -7);
+
+    const visibleTasks = tasks.items.filter(
+      (t) => !isAgent || t.assignedToId === profile?.uid
+    );
+
+    const visibleLeads = leads.items.filter((l) => {
+      const ownerUid = l.assignedToUid ?? l.assignedRepId ?? "";
+      return !isAgent || ownerUid === profile?.uid;
+    });
+
+    const overdueTaskActions = visibleTasks
+      .filter((t) => t.isOverdue)
+      .sort((a, b) => (a.dueAt.toMillis() ?? 0) - (b.dueAt.toMillis() ?? 0))
+      .slice(0, 5)
+      .map((t) => {
+        const due = tsToDate(t.dueAt);
+        const daysOverdue = due
+          ? Math.max(1, Math.round((todayStart.getTime() - due.getTime()) / 86400000))
+          : 1;
+        const contact =
+          t.contactId && contactById.get(t.contactId)
+            ? contactById.get(t.contactId)
+            : null;
+        const lead = t.leadId ? visibleLeads.find((l) => l.id === t.leadId) ?? null : null;
+
+        return {
+          key: `overdue-${t.id}`,
+          priority: 1,
+          kind: "overdue_task" as const,
+          tone: "red" as const,
+          title: `${t.title || t.type} — ${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue`,
+          subtitle: lead
+            ? `${contact ? `${contact.firstName} ${contact.lastName}` : "Lead"} • ${lead.propertyType ?? "Lead"}`
+            : contact
+            ? `${contact.firstName} ${contact.lastName}`
+            : "",
+          taskId: t.id,
+        };
+      });
+
+    const coldLeadActions = visibleLeads
+      .filter((l) => l.status !== "Won" && l.status !== "Lost")
+      .map((l) => {
+        const last = tsToDate(l.lastContactAt) ?? tsToDate(l.createdAt);
+        if (!last) return null;
+        const daysNoContact = Math.floor(
+          (todayStart.getTime() - last.getTime()) / 86400000
+        );
+        return { lead: l, daysNoContact };
+      })
+      .filter(
+        (x): x is { lead: (typeof leads.items)[number]; daysNoContact: number } =>
+          !!x && x.daysNoContact >= 7 && x.lead.status !== "Won" && x.lead.status !== "Lost"
+      )
+      .sort((a, b) => b.daysNoContact - a.daysNoContact)
+      .slice(0, 5)
+      .map(({ lead, daysNoContact }) => {
+        const contact = lead.contactId ? contactById.get(lead.contactId) ?? null : null;
+        const name = contact ? `${contact.firstName} ${contact.lastName}` : lead.propertyType ?? "Lead";
+        return {
+          key: `cold-${lead.id}`,
+          priority: 2,
+          kind: "cold_lead" as const,
+          tone: "amber" as const,
+          title: `Call ${name} — ${daysNoContact} days no contact`,
+          subtitle: `${lead.propertyType ?? "Lead"}${lead.location ? ` • ${lead.location}` : ""}`,
+          leadId: lead.id as string,
+        };
+      });
+
+    const dueTodayTaskActions = visibleTasks
+      .filter((t) => {
+        if (t.status === "completed") return false;
+        const due = tsToDate(t.dueAt);
+        return !!due && due >= todayStart && due < todayEnd;
+      })
+      .sort((a, b) => a.dueAt.toMillis() - b.dueAt.toMillis())
+      .slice(0, 5)
+      .map((t) => {
+        const contact =
+          t.contactId && contactById.get(t.contactId)
+            ? contactById.get(t.contactId)
+            : null;
+        const lead = t.leadId ? visibleLeads.find((l) => l.id === t.leadId) ?? null : null;
+        return {
+          key: `todaytask-${t.id}`,
+          priority: 3,
+          kind: "due_today_task" as const,
+          tone: "blue" as const,
+          title: `${t.title || t.type} — due today`,
+          subtitle: lead
+            ? `${contact ? `${contact.firstName} ${contact.lastName}` : "Lead"} • ${lead.propertyType ?? "Lead"}`
+            : contact
+            ? `${contact.firstName} ${contact.lastName}`
+            : "",
+          taskId: t.id,
+        };
+      });
+
+    const cadenceLeadActions = visibleLeads
+      .filter((l) => l.cadenceId && l.status !== "Won" && l.status !== "Lost")
+      .map((l) => {
+        const cadence = DEFAULT_CADENCES.find((c) => c.id === l.cadenceId);
+        if (!cadence) return null;
+        const stepIndex = l.cadenceStepIndex ?? 0;
+        const step = cadence.steps[stepIndex] ?? cadence.steps[0];
+        const base = tsToDate(l.createdAt);
+        if (!base) return null;
+        const due = addDays(base, step.dayOffset);
+        return { lead: l, due, cadenceName: cadence.name };
+      })
+      .filter(
+        (x): x is {
+          lead: (typeof leads.items)[number];
+          due: Date;
+          cadenceName: string;
+        } => !!x && x.due <= now
+      )
+      .sort((a, b) => a.due.getTime() - b.due.getTime())
+      .slice(0, 5)
+      .map(({ lead, due, cadenceName }) => {
+        const contact = lead.contactId ? contactById.get(lead.contactId) ?? null : null;
+        const name = contact ? `${contact.firstName} ${contact.lastName}` : lead.propertyType ?? "Lead";
+        return {
+          key: `cad-${lead.id}`,
+          priority: 4,
+          kind: "cadence_lead" as const,
+          tone: "blue" as const,
+          title: `Cadence next action: ${name}`,
+          subtitle: `${cadenceName}${due ? ` • due ${due.toLocaleDateString()}` : ""}`,
+          leadId: lead.id as string,
+        };
+      });
+
+    const selected = [
+      ...overdueTaskActions,
+      ...coldLeadActions,
+      ...dueTodayTaskActions,
+      ...cadenceLeadActions,
+    ].slice(0, 3);
+
+    return {
+      selected,
+      totalUrgent: selected.length,
+      remainingSlots: Math.max(0, 3 - selected.length),
+    };
+  }, [tasks.items, leads.items, isAgent, profile?.uid, todayStart, contactById]);
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -271,15 +564,317 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-4">
+      {showConfetti && (
+        <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">
+          {Array.from({ length: 45 }).map((_, i) => (
+            <span
+              // eslint-disable-next-line react/no-array-index-key
+              key={i}
+              className="bayan-confetti"
+              style={{
+                left: `${Math.random() * 100}%`,
+                animationDelay: `${Math.random() * 0.4}s`,
+                opacity: 0.95,
+              }}
+            />
+          ))}
+        </div>
+      )}
+
       <div>
-        <div className="text-lg font-semibold tracking-tight">
-          Dashboard
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-lg font-semibold tracking-tight">
+              {(() => {
+                const hour = new Date().getHours();
+                if (hour >= 6 && hour < 12) return `Good morning, ${userFirstName} ☀️`;
+                if (hour >= 12 && hour < 18)
+                  return `Good afternoon, ${userFirstName} 👋`;
+                return `Good evening, ${userFirstName} 🌙`;
+              })()}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Today’s KPIs, your pipeline, and what needs attention.
+            </div>
+            <div className="mt-2 text-sm text-muted-foreground">{todaySummary}</div>
+            <div className="mt-1 text-sm">
+              {hasActivityToday ? (
+                <span className="font-semibold text-primary">
+                  🔥 {streak} day streak
+                </span>
+              ) : (
+                <span className="text-muted-foreground">
+                  Log an activity to keep your streak!
+                </span>
+              )}
+            </div>
+          </div>
         </div>
-        <div className="text-sm text-muted-foreground">
-          Today’s KPIs, your pipeline, and what needs attention.
-        </div>
-        <div className="mt-2 text-sm text-muted-foreground">{todaySummary}</div>
       </div>
+
+      {onboardingStarted && !onboardingDismissed && onboardingProgress < 4 && (
+        <Card className="relative overflow-hidden p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-base font-semibold">
+                Welcome to Bayan CRM 👋 Let&apos;s get you started
+              </div>
+              <div className="mt-1 text-sm text-muted-foreground">
+                Complete these 4 steps to set up your workspace
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setOnboardingDismissed(true);
+                setOnboardingStarted(false);
+                try {
+                  window.localStorage.setItem("bayan_onboarding_dismissed", "true");
+                } catch {
+                  // ignore
+                }
+              }}
+            >
+              Dismiss
+            </Button>
+          </div>
+
+          <div className="mt-4">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>
+                {onboardingProgress}/4 completed
+              </span>
+              <span>Progress</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full bg-primary"
+                style={{ width: `${(onboardingProgress / 4) * 100}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                {contactsCount > 0 ? (
+                  <Check className="h-4 w-4 text-green-600" />
+                ) : (
+                  <span className="text-muted-foreground">☐</span>
+                )}
+                <span
+                  className={
+                    contactsCount > 0 ? "line-through text-muted-foreground" : ""
+                  }
+                >
+                  Add your first contact →
+                </span>
+              </div>
+              {contactsCount > 0 ? null : <AddContactModal />}
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                {leadsCount > 0 ? (
+                  <Check className="h-4 w-4 text-green-600" />
+                ) : (
+                  <span className="text-muted-foreground">☐</span>
+                )}
+                <span
+                  className={
+                    leadsCount > 0 ? "line-through text-muted-foreground" : ""
+                  }
+                >
+                  Create your first lead →
+                </span>
+              </div>
+              {leadsCount > 0 ? null : <AddLeadModal />}
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                {activitiesCount > 0 ? (
+                  <Check className="h-4 w-4 text-green-600" />
+                ) : (
+                  <span className="text-muted-foreground">☐</span>
+                )}
+                <span
+                  className={
+                    activitiesCount > 0 ? "line-through text-muted-foreground" : ""
+                  }
+                >
+                  Log your first activity →
+                </span>
+              </div>
+              {activitiesCount > 0 ? null : (
+                <Button size="sm" onClick={() => setLogActivityOpen(true)}>
+                  Log Activity
+                </Button>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                {tasks.items.length > 0 ? (
+                  <Check className="h-4 w-4 text-green-600" />
+                ) : (
+                  <span className="text-muted-foreground">☐</span>
+                )}
+                <span
+                  className={
+                    tasks.items.length > 0 ? "line-through text-muted-foreground" : ""
+                  }
+                >
+                  Schedule a follow-up task →
+                </span>
+              </div>
+              {tasks.items.length > 0 ? null : (
+                <Link href="/tasks" className="inline-flex">
+                  <Button size="sm">Add Task</Button>
+                </Link>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
+
+      <Card className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-medium">Your focus for today</div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {new Date().toLocaleDateString(undefined, {
+                weekday: "long",
+                month: "short",
+                day: "numeric",
+              })}
+            </div>
+          </div>
+        </div>
+
+        {focus.selected.length === 0 ? (
+          <div className="mt-4 rounded-lg bg-green-50 p-4 text-sm text-green-700">
+            Great work! No urgent actions today 🎉
+          </div>
+        ) : (
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {focus.selected.map((action) => (
+              <div
+                key={action.key}
+                className="rounded-lg border bg-card p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0">
+                    {action.tone === "red" && (
+                      <div className="rounded-lg bg-red-50 p-2 text-red-600">
+                        <AlertTriangle className="h-5 w-5" />
+                      </div>
+                    )}
+                    {action.tone === "amber" && (
+                      <div className="rounded-lg bg-amber-50 p-2 text-amber-600">
+                        <Phone className="h-5 w-5" />
+                      </div>
+                    )}
+                    {action.tone === "blue" && (
+                      <div className="rounded-lg bg-blue-50 p-2 text-blue-600">
+                        <Clock className="h-5 w-5" />
+                      </div>
+                    )}
+
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium">{action.title}</div>
+                      {action.subtitle ? (
+                        <div className="mt-1 text-xs text-muted-foreground truncate">
+                          {action.subtitle}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="shrink-0">
+                    {action.kind === "overdue_task" ? (
+                      <Popover
+                        open={overdueTaskId === action.taskId}
+                        onOpenChange={(o) => setOverdueTaskId(o ? action.taskId : null)}
+                      >
+                        <PopoverTrigger asChild>
+                          <Button
+                            size="sm"
+                            className="h-8"
+                            onClick={() => setOverdueOutcomeNote("")}
+                          >
+                            Do it →
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent align="end" className="w-80">
+                          <div className="grid gap-2">
+                            <div className="text-sm font-medium">Outcome note (optional)</div>
+                            <Textarea
+                              value={overdueOutcomeNote}
+                              placeholder="Short note for the task completion"
+                              onChange={(e) => setOverdueOutcomeNote(e.target.value)}
+                              rows={3}
+                            />
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setOverdueTaskId(null);
+                                  setOverdueOutcomeNote("");
+                                }}
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  void completeTask(action.taskId, overdueOutcomeNote);
+                                  setOverdueTaskId(null);
+                                  setOverdueOutcomeNote("");
+                                }}
+                              >
+                                Complete
+                              </Button>
+                            </div>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    ) : action.kind === "due_today_task" ? (
+                      <Button
+                        size="sm"
+                        className="h-8"
+                        onClick={() => {
+                          void completeTask(action.taskId);
+                        }}
+                      >
+                        Do it →
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="h-8"
+                        onClick={() => {
+                          setLeadDrawerId(action.leadId);
+                          setLeadDrawerOpen(true);
+                        }}
+                      >
+                        Do it →
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {focus.remainingSlots > 0 ? (
+              <div className="rounded-lg border bg-muted/20 p-4 md:col-span-2">
+                <div className="text-sm font-medium">You&apos;re all caught up here 🎉</div>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </Card>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <KpiCard label="Contacts Made today" value={kpis.contactsMadeToday} />
@@ -288,6 +883,15 @@ export default function DashboardPage() {
         <KpiCard label="Deals Won this month" value={kpis.dealsWonThisMonth} />
         <KpiCard label="Pipeline value" value={formatOMR(kpis.pipelineValue)} />
       </div>
+
+      <LeadDetailDrawer
+        lead={selectedLead}
+        open={leadDrawerOpen}
+        onOpenChange={(o) => {
+          setLeadDrawerOpen(o);
+          if (!o) setLeadDrawerId(null);
+        }}
+      />
 
       {overdue.length > 0 && (
         <Card className="border-destructive/30 bg-destructive/5 p-4">

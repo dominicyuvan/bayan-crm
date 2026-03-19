@@ -25,6 +25,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   FileText,
   Mail,
@@ -33,6 +34,7 @@ import {
   Phone,
   Users,
 } from "lucide-react";
+import { AddLeadModal } from "@/components/leads/add-lead-modal";
 
 export function ContactDetailDrawer({
   contact,
@@ -45,6 +47,7 @@ export function ContactDetailDrawer({
 }) {
   const { profile } = useAuth();
   const leads = useLeads();
+  const [addLeadOpen, setAddLeadOpen] = React.useState(false);
 
   const [saving, setSaving] = React.useState(false);
   const [firstName, setFirstName] = React.useState("");
@@ -179,7 +182,7 @@ export function ContactDetailDrawer({
 
   const linkedLeads = React.useMemo(() => {
     if (!contact) return [];
-    return leads.items.filter((l) => l.contactId === contact.id).slice(0, 10);
+    return leads.items.filter((l) => l.contactId === contact.id);
   }, [leads.items, contact]);
 
   async function onSaveInline() {
@@ -212,7 +215,23 @@ export function ContactDetailDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="sm:max-w-xl">
         <SheetHeader>
-          <SheetTitle>{name || "Contact"}</SheetTitle>
+          <div className="flex items-center justify-between gap-3">
+            <SheetTitle>{name || "Contact"}</SheetTitle>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                onClick={() => setAddLeadOpen(true)}
+                disabled={!contact}
+              >
+                Create Lead
+              </Button>
+              <AddLeadModal
+                preselectedContactId={contact?.id}
+                externalOpen={addLeadOpen}
+                onExternalOpenChange={setAddLeadOpen}
+              />
+            </div>
+          </div>
         </SheetHeader>
 
         {!contact ? null : (
@@ -255,91 +274,105 @@ export function ContactDetailDrawer({
               </Button>
             </div>
 
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Linked leads</div>
-              {linkedLeads.length === 0 ? (
-                <div className="text-sm text-muted-foreground">No leads yet.</div>
-              ) : (
-                <div className="space-y-2">
-                  {linkedLeads.map((l) => (
-                    <div
-                      key={l.id}
-                      className="flex items-center justify-between rounded-lg border p-3"
-                    >
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium">
-                          {l.propertyType ?? "Lead"}{" "}
-                          {l.location ? `• ${l.location}` : ""}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          Last contact:{" "}
-                          {tsToDate(l.lastContactAt)?.toLocaleDateString() ?? "—"}
-                        </div>
-                      </div>
-                      <Badge variant="secondary">{l.status}</Badge>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <Tabs defaultValue="activity">
+              <TabsList className="w-full justify-start">
+                <TabsTrigger value="activity">Activity</TabsTrigger>
+                <TabsTrigger value="leads">Leads</TabsTrigger>
+              </TabsList>
 
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Activity timeline</div>
-              {activityItems.length === 0 ? (
-                <div className="text-sm text-muted-foreground">No activities yet.</div>
-              ) : (
-                <div className="space-y-3">
-                  {activityItems.map((a) => {
-                    const createdAt =
-                      tsToDate(a.createdAt) ?? tsToDate(a.occurredAt);
-                    const createdAtDate = createdAt ?? new Date();
-                    const { Icon, iconBg, iconColor } = getActivityVisual(a.type);
-                    const notes = (a.notes ?? a.title ?? "").toString();
+              <TabsContent value="activity">
+                <div className="space-y-2 mt-4">
+                  <div className="text-sm font-medium">Activity timeline</div>
+                  {activityItems.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">No activities yet.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {activityItems.map((a) => {
+                        const createdAt =
+                          tsToDate(a.createdAt) ?? tsToDate(a.occurredAt);
+                        const createdAtDate = createdAt ?? new Date();
+                        const { Icon, iconBg, iconColor } = getActivityVisual(a.type);
+                        const notes = (a.notes ?? a.title ?? "").toString();
 
-                    const outcome =
-                      ((a as unknown as { outcome?: string }).outcome ??
-                        "neutral") as string;
-                    const outcomeColor =
-                      outcome === "positive"
-                        ? "bg-green-500"
-                        : outcome === "negative"
-                        ? "bg-red-500"
-                        : "bg-gray-400";
+                        const outcome =
+                          ((a as unknown as { outcome?: string }).outcome ??
+                            "neutral") as string;
+                        const outcomeColor =
+                          outcome === "positive"
+                            ? "bg-green-500"
+                            : outcome === "negative"
+                            ? "bg-red-500"
+                            : "bg-gray-400";
 
-                    const contactName = `${contact?.firstName ?? ""} ${
-                      contact?.lastName ?? ""
-                    }`.trim();
+                        const contactName = `${contact?.firstName ?? ""} ${
+                          contact?.lastName ?? ""
+                        }`.trim();
 
-                    return (
-                      <div
-                        key={a.id}
-                        className="flex items-start gap-3 rounded-lg p-3 hover:bg-muted/50"
-                      >
-                        <div className={`p-2 rounded-lg ${iconBg}`}>
-                          <Icon className={`h-4 w-4 ${iconColor}`} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between">
-                            <p className="text-sm font-medium">
-                              {contactName || a.type}
-                            </p>
-                            <span className="text-xs text-muted-foreground">
-                              {relativeTime(createdAtDate)}
-                            </span>
+                        return (
+                          <div
+                            key={a.id}
+                            className="flex items-start gap-3 rounded-lg p-3 hover:bg-muted/50"
+                          >
+                            <div className={`p-2 rounded-lg ${iconBg}`}>
+                              <Icon className={`h-4 w-4 ${iconColor}`} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between">
+                                <p className="text-sm font-medium">
+                                  {contactName || a.type}
+                                </p>
+                                <span className="text-xs text-muted-foreground">
+                                  {relativeTime(createdAtDate)}
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {truncateText(notes)}
+                              </p>
+                            </div>
+                            <div
+                              className={`h-2 w-2 rounded-full mt-2 ${outcomeColor}`}
+                            />
                           </div>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {truncateText(notes)}
-                          </p>
-                        </div>
-                        <div
-                          className={`h-2 w-2 rounded-full mt-2 ${outcomeColor}`}
-                        />
-                      </div>
-                    );
-                  })}
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </TabsContent>
+
+              <TabsContent value="leads">
+                <div className="space-y-2 mt-4">
+                  <div className="text-sm font-medium">Linked leads</div>
+                  {linkedLeads.length === 0 ? (
+                    <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                      No leads yet.
+                      <div className="mt-3">
+                        <Button onClick={() => setAddLeadOpen(true)}>Create Lead</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid gap-2">
+                      {linkedLeads.slice(0, 20).map((l) => (
+                        <div
+                          key={l.id}
+                          className="rounded-lg border p-3 flex items-start justify-between gap-3"
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-medium">
+                              {l.propertyType ?? "Lead"} {l.location ? `• ${l.location}` : ""}
+                            </div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {typeof l.valueOmr === "number" ? `OMR ${l.valueOmr.toFixed(3)}` : "—"}
+                            </div>
+                          </div>
+                          <Badge variant="secondary">{l.status}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
           </div>
         )}
       </SheetContent>

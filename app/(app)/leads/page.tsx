@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";
 import { useContacts, useLeads, useTeamMembers } from "@/lib/firestore-provider";
 import type { LeadStatus, LeadTemperature } from "@/lib/types";
@@ -13,8 +15,16 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { ChevronRight } from "lucide-react";
+import { toast } from "sonner";
 
 const STATUSES: Array<LeadStatus | "all"> = [
   "all",
@@ -25,6 +35,7 @@ const STATUSES: Array<LeadStatus | "all"> = [
   "Lost",
 ];
 const TEMPS: Array<LeadTemperature | "all"> = ["all", "cold", "warm", "hot"];
+const LEAD_STATUSES: LeadStatus[] = ["New", "Contacted", "Qualified", "Won", "Lost"];
 
 function statusBadgeVariant(status: LeadStatus) {
   switch (status) {
@@ -57,10 +68,23 @@ export default function LeadsPage() {
   const isMobile = useIsMobile();
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [mobileStatusLeadId, setMobileStatusLeadId] = React.useState<string | null>(null);
   const selected = React.useMemo(
     () => leads.items.find((l) => l.id === selectedId) ?? null,
     [leads.items, selectedId]
   );
+
+  async function updateLeadStatus(leadId: string, next: LeadStatus) {
+    try {
+      await updateDoc(doc(db, "leads", leadId), {
+        status: next,
+        updatedAt: serverTimestamp(),
+      });
+      toast.success(`Lead marked as ${next}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update lead");
+    }
+  }
 
   const filtered = React.useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -128,13 +152,44 @@ export default function LeadsPage() {
               </p>
             </div>
           </div>
-          <span
-            className={`rounded-full px-2 py-1 text-xs font-medium ${
-              statusColors[lead.status] ?? "bg-muted text-foreground"
-            }`}
+          <Popover
+            open={mobileStatusLeadId === lead.id}
+            onOpenChange={(o) => setMobileStatusLeadId(o ? lead.id : null)}
           >
-            {lead.status}
-          </span>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMobileStatusLeadId(lead.id ?? null);
+                }}
+                className={`rounded-full px-2 py-1 text-xs font-medium ${
+                  statusColors[lead.status] ?? "bg-muted text-foreground"
+                }`}
+              >
+                {lead.status}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-44 p-1">
+              <div className="grid gap-1">
+                {LEAD_STATUSES.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className="rounded-md px-2 py-1 text-left text-xs hover:bg-muted"
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      if (!lead.id) return;
+                      void updateLeadStatus(lead.id, s);
+                      setMobileStatusLeadId(null);
+                    }}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
         <div className="mt-3 flex items-center justify-between">
           <span className="font-mono text-sm font-semibold">
@@ -283,9 +338,33 @@ export default function LeadsPage() {
                         {typeof l.valueOmr === "number" ? formatOMR(l.valueOmr) : "—"}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={statusBadgeVariant(l.status)}>
-                          {l.status}
-                        </Badge>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Badge variant={statusBadgeVariant(l.status)}>
+                                {l.status}
+                              </Badge>
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {LEAD_STATUSES.map((s) => (
+                              <DropdownMenuItem
+                                key={s}
+                                onSelect={(ev) => {
+                                  ev.preventDefault();
+                                  ev.stopPropagation();
+                                  if (!l.id) return;
+                                  void updateLeadStatus(l.id, s);
+                                }}
+                              >
+                                {s}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                       <TableCell className="text-right">
                         <Button
@@ -329,7 +408,45 @@ export default function LeadsPage() {
                     {(l.propertyType ?? "Lead") + (l.location ? ` • ${l.location}` : "")}
                   </div>
                   <div className="mt-3 flex items-center justify-between">
-                    <Badge variant={statusBadgeVariant(l.status)}>{l.status}</Badge>
+                    <Popover
+                      open={mobileStatusLeadId === l.id}
+                      onOpenChange={(o) =>
+                        setMobileStatusLeadId(o ? l.id : null)
+                      }
+                    >
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMobileStatusLeadId(l.id ?? null);
+                          }}
+                        >
+                          <Badge variant={statusBadgeVariant(l.status)}>
+                            {l.status}
+                          </Badge>
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent align="end" className="w-44 p-1">
+                        <div className="grid gap-1">
+                          {LEAD_STATUSES.map((s) => (
+                            <button
+                              key={s}
+                              type="button"
+                              className="rounded-md px-2 py-1 text-left text-xs hover:bg-muted"
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                if (!l.id) return;
+                                void updateLeadStatus(l.id, s);
+                                setMobileStatusLeadId(null);
+                              }}
+                            >
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                     <div className="text-xs text-muted-foreground">
                       {typeof l.valueOmr === "number" ? formatOMR(l.valueOmr) : "—"}
                     </div>

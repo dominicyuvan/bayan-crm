@@ -25,12 +25,22 @@ const SOURCES = [
   "Other",
 ];
 
-export function AddLeadModal() {
+export type AddLeadModalProps = {
+  preselectedContactId?: string;
+  externalOpen?: boolean;
+  onExternalOpenChange?: (open: boolean) => void;
+};
+
+export function AddLeadModal({
+  preselectedContactId,
+  externalOpen,
+  onExternalOpenChange,
+}: AddLeadModalProps) {
   const { profile } = useAuth();
   const contacts = useContacts();
   const status: LeadStatus = "New";
 
-  const [open, setOpen] = React.useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
 
   const [contactId, setContactId] = React.useState<string>("");
@@ -39,6 +49,23 @@ export function AddLeadModal() {
   const [valueOmr, setValueOmr] = React.useState<string>("");
   const [source, setSource] = React.useState("");
   const [notes, setNotes] = React.useState("");
+
+  const isControlled =
+    typeof externalOpen === "boolean" && typeof onExternalOpenChange === "function";
+  const open = isControlled ? externalOpen : uncontrolledOpen;
+
+  const setOpen = React.useCallback(
+    (next: boolean) => {
+      if (isControlled) onExternalOpenChange(next);
+      else setUncontrolledOpen(next);
+    },
+    [isControlled, onExternalOpenChange]
+  );
+
+  React.useEffect(() => {
+    if (!preselectedContactId) return;
+    setContactId(preselectedContactId);
+  }, [preselectedContactId]);
 
   function reset() {
     setContactId("");
@@ -102,9 +129,11 @@ export function AddLeadModal() {
         if (!v) reset();
       }}
     >
-      <DialogTrigger asChild>
-        <Button>Add Lead</Button>
-      </DialogTrigger>
+      {!isControlled && (
+        <DialogTrigger asChild>
+          <Button>Add Lead</Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Add lead</DialogTitle>

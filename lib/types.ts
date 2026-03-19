@@ -7,6 +7,7 @@ export interface UserProfile {
   uid: string;
   email: string;
   displayName: string;
+  firstName: string;
   initials: string;
   role: UserRole;
   createdAt: Timestamp;
