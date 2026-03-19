@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useFirestore, useLeads, useActivities, useTeamMembers } from "@/lib/firestore-provider";
 import type { TeamMember } from "@/lib/types";
 import { db } from "@/lib/firebase";
+import { teamMembersCol } from "@/lib/firestore";
 import { formatOMR } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -100,13 +101,7 @@ function AddEditMemberDialog({
           joinedAt: serverTimestamp(),
         } satisfies WithFieldValue<TeamMember>;
 
-        await addDoc(
-          // separate admin-created members not tied to uid, but still in team_members
-          // allow Firestore to assign id
-          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-          (db as any).collection ? (db as any) : (await import("@/lib/firestore")).teamMembersCol,
-          payload as any
-        );
+        await addDoc(teamMembersCol, payload);
       } else if (member) {
         const ref = doc(db, "team_members", member.id);
         await updateDoc(ref, {

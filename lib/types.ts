@@ -111,6 +111,7 @@ export interface TeamMember {
   uid: string;
   email: string;
   displayName: string;
+  name?: string;
   initials: string;
   role: "admin" | "manager" | "sales_executive" | "agent";
   phone?: string;
