@@ -40,13 +40,24 @@ function useCollection<T>(q: ReturnType<typeof query>) {
   });
 
   React.useEffect(() => {
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      setState((s) => ({ ...s, loading: false }));
+    }, 5000);
+
     const unsub = onSnapshot(
       q,
       (snap) => {
         const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as T) }));
+        if (!settled) settled = true;
+        clearTimeout(timeout);
         setState({ items, loading: false, error: null });
       },
       (err) => {
+        if (!settled) settled = true;
+        clearTimeout(timeout);
         setState((s) => ({
           ...s,
           loading: false,
@@ -54,7 +65,10 @@ function useCollection<T>(q: ReturnType<typeof query>) {
         }));
       }
     );
-    return () => unsub();
+    return () => {
+      clearTimeout(timeout);
+      unsub();
+    };
   }, [q]);
 
   return state;
@@ -88,23 +102,40 @@ const TeamMembersContext =
   React.createContext<CollectionState<TeamMember> | null>(null);
 
 export function FirestoreProvider({ children }: { children: React.ReactNode }) {
-  const contacts = useCollection<Contact>(
-    query(contactsCol, orderBy("updatedAt", "desc"))
+  // Memoize queries to prevent re-subscribing every render.
+  const contactsQ = React.useMemo(
+    () => query(contactsCol, orderBy("updatedAt", "desc")),
+    []
   );
-  const leads = useCollection<Lead>(query(leadsCol, orderBy("updatedAt", "desc")));
-  const activities = useCollection<Activity>(
-    query(activitiesCol, orderBy("occurredAt", "desc"))
+  const leadsQ = React.useMemo(
+    () => query(leadsCol, orderBy("updatedAt", "desc")),
+    []
   );
-  const rawTasks = useCollection<Task>(query(tasksCol, orderBy("dueAt", "asc")));
-  const contracts = useCollection<Contract>(
-    query(contractsCol, orderBy("updatedAt", "desc"))
+  const activitiesQ = React.useMemo(
+    () => query(activitiesCol, orderBy("occurredAt", "desc")),
+    []
   );
-  const teamMembers = useCollection<TeamMember>(
-    query(teamMembersCol, orderBy("displayName", "asc"))
+  const tasksQ = React.useMemo(() => query(tasksCol, orderBy("dueAt", "asc")), []);
+  const contractsQ = React.useMemo(
+    () => query(contractsCol, orderBy("updatedAt", "desc")),
+    []
   );
-  const cadences = useCollection<CadenceTemplate>(
-    query(cadencesCol, orderBy("updatedAt", "desc"))
+  const teamMembersQ = React.useMemo(
+    () => query(teamMembersCol, orderBy("displayName", "asc")),
+    []
   );
+  const cadencesQ = React.useMemo(
+    () => query(cadencesCol, orderBy("updatedAt", "desc")),
+    []
+  );
+
+  const contacts = useCollection<Contact>(contactsQ);
+  const leads = useCollection<Lead>(leadsQ);
+  const activities = useCollection<Activity>(activitiesQ);
+  const rawTasks = useCollection<Task>(tasksQ);
+  const contracts = useCollection<Contract>(contractsQ);
+  const teamMembers = useCollection<TeamMember>(teamMembersQ);
+  const cadences = useCollection<CadenceTemplate>(cadencesQ);
 
   const tasks = React.useMemo(() => {
     const now = new Date();
