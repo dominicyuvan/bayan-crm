@@ -12,7 +12,7 @@ import {
   X,
 } from "lucide-react";
 
-import { activitiesCol, contactsCol } from "@/lib/firestore";
+import { contactsCol } from "@/lib/firestore";
 import { useAuth } from "@/lib/auth-context";
 import { useContacts, useLeads } from "@/lib/firestore-provider";
 import type { Activity, Contact } from "@/lib/types";
@@ -231,14 +231,19 @@ export function LogActivityFab({
     toast.success(`Created contact: ${fullName}`);
   }
 
-  async function submit() {
-    if (!profile?.uid) return;
-    if (submitting) return;
+  async function handleSubmit() {
+    console.log("FAB submit called", { selectedType, notes, selectedContactId });
 
     if (!selectedType) {
+      toast.error("Please select an activity type");
       shakeTypeGrid();
       return;
     }
+    if (!profile) {
+      toast.error("You must be logged in");
+      return;
+    }
+    if (submitting) return;
 
     if (selectedNotesIsEmpty && selectedType !== "Call") {
       setNotesHint("Add a quick note");
@@ -246,14 +251,14 @@ export function LogActivityFab({
 
     setSubmitting(true);
     try {
-      const payload = {
+      const activityData = {
         type: selectedType,
-        notes: notes.trim(),
+        notes: notes?.trim() || "",
         contactId: selectedContactId || null,
         contactName: selectedContactName || null,
         leadId: null,
         outcome: null,
-        createdBy: profile.uid,
+        createdBy: profile.uid || "",
         createdByName: profile.displayName || "",
         createdAt: serverTimestamp(),
         completedAt: serverTimestamp(),
@@ -261,11 +266,18 @@ export function LogActivityFab({
         status: "done",
       } satisfies WithFieldValue<Activity>;
 
-      const ref = doc(activitiesCol);
-      await setDoc(ref, payload);
+      console.log("Writing activity:", activityData);
+      const { collection: col, addDoc: add } = await import("firebase/firestore");
+      const { db: fireDb } = await import("@/lib/firestore");
+      const ref = await add(col(fireDb, "activities"), activityData);
+      console.log("Activity written:", ref.id);
 
-      toast.success(getSuccessToastTitle(selectedType));
+      toast.success(`${selectedType} logged ✓`);
       setNotes("");
+      setSelectedContactId("");
+      setSelectedContactName("");
+      setContactSearch("");
+      setShowContactResults(false);
       setNotesHint(null);
       setLinkExpanded(false);
 
@@ -275,7 +287,13 @@ export function LogActivityFab({
         setOpen(false);
       }, 1000);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save activity");
+      console.error("FAB ERROR:", err, JSON.stringify(err));
+      console.error("Activity save error:", err);
+      const message =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message?: string }).message ?? "Unknown error")
+          : "Unknown error";
+      toast.error(`Failed to log: ${message}`);
     } finally {
       setSubmitting(false);
     }
@@ -295,7 +313,7 @@ export function LogActivityFab({
       const isCmdOrCtrl = e.metaKey || e.ctrlKey;
       if (isCmdOrCtrl && e.key === "Enter") {
         e.preventDefault();
-        void submit();
+        void handleSubmit();
       }
     }
 
@@ -481,7 +499,7 @@ export function LogActivityFab({
           <Button
             type="button"
             disabled={submitting}
-            onClick={() => void submit()}
+            onClick={() => void handleSubmit()}
             className="bg-primary text-white rounded-full px-5 py-2 hover:bg-primary/90"
           >
             {submitting ? "Logging..." : "Log Activity"}

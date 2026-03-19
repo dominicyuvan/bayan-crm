@@ -16,6 +16,7 @@ import type {
 } from "@/lib/types";
 
 export const firestore: Firestore = db;
+export { db };
 
 function typedCollection<T>(path: string) {
   return collection(firestore, path) as CollectionReference<T>;

@@ -1,11 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { addDoc, serverTimestamp, type WithFieldValue } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { toast } from "sonner";
-import { contactsCol } from "@/lib/firestore";
+import { db } from "@/lib/firestore";
 import { useAuth } from "@/lib/auth-context";
-import type { Contact } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -38,40 +37,68 @@ export function AddContactModal() {
     setNotes("");
   }
 
-  async function onSave() {
-    if (!firstName.trim() || !lastName.trim()) {
-      toast.error("First name and last name are required");
+  async function handleSubmit() {
+    const formData = {
+      firstName,
+      lastName,
+      phone,
+      whatsapp,
+      email,
+      company,
+      source,
+      notes,
+    };
+    console.log("handleSubmit called", formData);
+
+    if (!formData.firstName?.trim() || !formData.lastName?.trim() || !formData.phone?.trim()) {
+      toast.error("First name, last name and phone are required");
       return;
     }
-    if (!phone.trim()) {
-      toast.error("Phone is required");
+    if (!profile) {
+      toast.error("You must be logged in");
       return;
     }
+
     setSubmitting(true);
     try {
-      const payload = {
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        phone: phone.trim(),
-        whatsapp: whatsapp.trim() || "",
-        email: email.trim() || "",
-        company: company.trim() || "",
-        source: source.trim() || "",
-        notes: notes.trim() || "",
-        assignedTo: profile?.displayName || "",
-        assignedToUid: profile?.uid || "",
+      const contactData = {
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        phone: formData.phone.trim(),
+        whatsapp: formData.whatsapp?.trim() || "",
+        email: formData.email?.trim() || "",
+        company: formData.company?.trim() || "",
+        source: formData.source || "",
+        notes: formData.notes?.trim() || "",
+        tags: [],
+        assignedTo: profile.displayName || "",
+        assignedToUid: profile.uid || "",
+        lastContactedAt: null,
+        lastContactAt: serverTimestamp(),
+        createdBy: profile.uid,
+        createdByName: profile.displayName || "",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        lastContactAt: serverTimestamp(),
-      } satisfies WithFieldValue<Contact>;
+      };
 
-      await addDoc(contactsCol, payload);
+      console.log("Writing to Firestore:", contactData);
+      console.log("About to write:", contactData);
+      const ref = await addDoc(collection(db, "contacts"), contactData);
+      console.log("Written successfully:", ref.id);
 
-      toast.success("Contact saved");
-      setOpen(false);
+      toast.success(`${formData.firstName} added successfully`);
       reset();
+      setOpen(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save contact");
+      console.error("FULL ERROR:", err, JSON.stringify(err));
+      console.error("Save error:", err);
+      toast.error(
+        `Failed to save: ${
+          err && typeof err === "object" && "message" in err
+            ? String((err as { message?: string }).message ?? "Unknown error")
+            : "Unknown error"
+        }`
+      );
     } finally {
       setSubmitting(false);
     }
@@ -183,7 +210,7 @@ export function AddContactModal() {
             <Button variant="outline" onClick={() => setOpen(false)} disabled={submitting}>
               Cancel
             </Button>
-            <Button onClick={onSave} disabled={submitting}>
+            <Button onClick={handleSubmit} disabled={submitting}>
               Save
             </Button>
           </div>
