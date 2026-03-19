@@ -28,6 +28,7 @@ import { toast } from "sonner";
 import { tsToDate } from "@/lib/firestore";
 import type { FollowUpItem } from "@/lib/follow-up-engine";
 import { QuickFollowUpDialog } from "@/components/follow-up/quick-follow-up-dialog";
+import { SOURCE_OPTIONS } from "@/lib/constants";
 
 const STATUSES: Array<LeadStatus | "all"> = [
   "all",
@@ -102,6 +103,7 @@ export default function LeadsPage() {
   const [q, setQ] = React.useState("");
   const [status, setStatus] = React.useState<typeof STATUSES[number]>("all");
   const [temp, setTemp] = React.useState<typeof TEMPS[number]>("all");
+  const [source, setSource] = React.useState<string>("all");
   const [rep, setRep] = React.useState<string>("all");
   const isMobile = useIsMobile();
 
@@ -199,10 +201,11 @@ export default function LeadsPage() {
         loc.includes(query);
       const matchesStatus = status === "all" || l.status === status;
       const matchesTemp = temp === "all" || l.temperature === temp;
+      const matchesSource = source === "all" || l.source === source;
       const matchesRep = rep === "all" || ownerUid === rep;
-      return matchesQ && matchesStatus && matchesTemp && matchesRep;
+      return matchesQ && matchesStatus && matchesTemp && matchesSource && matchesRep;
     });
-  }, [leads.items, contacts.items, q, status, temp, rep, role, profile?.uid]);
+  }, [leads.items, contacts.items, q, status, temp, source, rep, role, profile?.uid]);
 
   const generatedUncontactedCount = React.useMemo(() => {
     return filtered.filter((l: any) => l.generatedAt && !getLeadLastContactDate(l)).length;
@@ -394,6 +397,19 @@ export default function LeadsPage() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={source} onValueChange={setSource}>
+          <SelectTrigger className="sm:w-44">
+            <SelectValue placeholder="Source" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Sources</SelectItem>
+            {SOURCE_OPTIONS.map((s) => (
+              <SelectItem key={s} value={s}>
+                {s}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {isManager && (
           <div className="w-full sm:w-auto">
             <div className="flex gap-2 overflow-x-auto pb-1">
@@ -424,7 +440,9 @@ export default function LeadsPage() {
         <div className="sm:ml-auto">
           <Button
             variant="outline"
-            onClick={() => (setQ(""), setStatus("all"), setTemp("all"), setRep("all"))}
+            onClick={() =>
+              (setQ(""), setStatus("all"), setTemp("all"), setSource("all"), setRep("all"))
+            }
           >
             Clear
           </Button>

@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Phone, MessageCircle, ChevronRight } from "lucide-react";
+import { SOURCE_OPTIONS } from "@/lib/constants";
 
 function toWaNumber(value: string) {
   return value.replace(/[^\d]/g, "");
@@ -36,12 +37,6 @@ export default function ContactsPage() {
   const selected = React.useMemo(() => {
     return contacts.items.find((c) => c.id === selectedId) ?? null;
   }, [contacts.items, selectedId]);
-
-  const sources = React.useMemo(() => {
-    const set = new Set<string>();
-    for (const c of contacts.items) if (c.source) set.add(c.source);
-    return Array.from(set).sort();
-  }, [contacts.items]);
 
   const filtered = React.useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -157,8 +152,8 @@ export default function ContactsPage() {
             <SelectValue placeholder="Source" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All sources</SelectItem>
-            {sources.map((s) => (
+            <SelectItem value="all">All Sources</SelectItem>
+            {SOURCE_OPTIONS.map((s) => (
               <SelectItem key={s} value={s}>
                 {s}
               </SelectItem>

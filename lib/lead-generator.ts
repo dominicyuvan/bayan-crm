@@ -86,13 +86,13 @@ export function scoreContactColdness(
   }
 
   // High intent sources
-  if (contact.source === "Referral") {
-    score += 10;
-    reasons.push("Referral — high intent");
-  }
   if (contact.source === "Exhibition") {
     score += 8;
     reasons.push("Exhibition lead");
+  }
+  if (contact.source === "Instagram") {
+    score += 8;
+    reasons.push("Instagram lead");
   }
 
   // Has phone number (can actually be contacted)

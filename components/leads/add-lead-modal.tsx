@@ -14,18 +14,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { X } from "lucide-react";
+import { SOURCE_OPTIONS } from "@/lib/constants";
 
 const PROPERTY_TYPES = ["Office", "Retail", "Warehouse", "Industrial", "Mixed", "Other"];
-const SOURCES = [
-  "Referral",
-  "Exhibition",
-  "Website",
-  "Cold call",
-  "Walk-in",
-  "WhatsApp",
-  "Other",
-];
-
 export type AddLeadModalProps = {
   preselectedContactId?: string;
   externalOpen?: boolean;
@@ -295,7 +286,7 @@ export function AddLeadModal({
                 <SelectValue placeholder="Select source" />
               </SelectTrigger>
               <SelectContent>
-                {SOURCES.map((s) => (
+                {SOURCE_OPTIONS.map((s) => (
                   <SelectItem key={s} value={s}>
                     {s}
                   </SelectItem>
