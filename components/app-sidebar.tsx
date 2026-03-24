@@ -76,13 +76,13 @@ export function AppSidebar({
       <div className="flex items-center justify-between gap-2 p-4">
         <div className={cn("min-w-0", collapsed && "sr-only")}>
           <div className="text-sm font-semibold tracking-tight">Bayan CRM</div>
-          <div className="text-xs text-white/60">Sales workspace</div>
+          <div className="text-xs text-sidebar-foreground/70">Sales workspace</div>
         </div>
         {!hideCollapseOnMobile && (
           <Button
             size="icon-sm"
             variant="ghost"
-            className="text-white/80 hover:bg-white/10 hover:text-white"
+            className="text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
             onClick={onToggleCollapsed}
           >
             <ChevronsLeftRightIcon className="size-4" />
@@ -106,8 +106,8 @@ export function AppSidebar({
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-white/10",
-                  active && "bg-white/10 text-white",
+                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent/50",
+                  active && "bg-sidebar-accent text-sidebar-foreground",
                   collapsed && "justify-center px-2"
                 )}
               >
@@ -123,7 +123,7 @@ export function AppSidebar({
       <div className="border-t border-sidebar-border p-3">
         <div className={cn("flex items-center gap-3", collapsed && "justify-center")}>
           <Avatar className="size-8">
-            <AvatarFallback className="bg-white/10 text-white">
+            <AvatarFallback className="bg-sidebar-accent text-sidebar-foreground">
               {profile?.initials ?? "U"}
             </AvatarFallback>
           </Avatar>
@@ -131,7 +131,7 @@ export function AppSidebar({
               <div className="truncate text-sm font-medium">
                 {profile?.displayName ?? profile?.email ?? "User"}
               </div>
-              <div className="truncate text-xs text-white/60">
+              <div className="truncate text-xs text-sidebar-foreground/70">
                 {profile?.role ?? ""}
               </div>
             </div>

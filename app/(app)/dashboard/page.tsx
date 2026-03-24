@@ -6,24 +6,16 @@ import {
   collection,
   doc,
   serverTimestamp,
-  updateDoc,
   writeBatch,
 } from "firebase/firestore";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
-import { db } from "@/lib/firebase";
 import { useActivities, useContacts, useLeads, useTasks } from "@/lib/firestore-provider";
 import { firestore, tsToDate } from "@/lib/firestore";
 import { cn, fireConfetti, formatOMR } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
@@ -31,17 +23,11 @@ import {
   Mail,
   MapPin,
   MessageSquare,
-  MessageCircle,
   Phone,
   Check,
-  Clock,
-  AlertTriangle,
-  Zap,
   Users,
   ChevronRight,
   Sparkles,
-  RefreshCw,
-  CheckCircle2,
   Trophy,
 } from "lucide-react";
 import { AddContactModal } from "@/components/contacts/add-contact-modal";
@@ -49,14 +35,8 @@ import { AddLeadModal } from "@/components/leads/add-lead-modal";
 import { LeadDetailDrawer } from "@/components/leads/lead-detail-drawer";
 import { ContactDetailDrawer } from "@/components/contacts/contact-detail-drawer";
 import { useLogActivityControl } from "@/lib/log-activity-control-context";
-import { DEFAULT_CADENCES } from "@/lib/cadence-templates";
 import type { Activity, Lead, Task } from "@/lib/types";
 import { generateTopLeads } from "@/lib/lead-generator";
-import {
-  buildFollowUpQueue,
-  type FollowUpItem,
-} from "@/lib/follow-up-engine";
-import { QuickFollowUpDialog } from "@/components/follow-up/quick-follow-up-dialog";
 
 function KpiCard({
   label,
@@ -74,10 +54,14 @@ function KpiCard({
   highlight?: "red" | "amber" | "green";
 }) {
   return (
-    <Card className={cn("p-4", className)}>
+    <Card className={cn("border-t-[3px] border-t-primary p-4", className)}>
       <div className="flex items-center justify-between gap-2">
         <div className="text-xs text-muted-foreground">{label}</div>
-        {Icon ? <Icon className="h-4 w-4 text-muted-foreground" /> : null}
+        {Icon ? (
+          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+            <Icon className="h-4 w-4 text-primary" />
+          </span>
+        ) : null}
       </div>
       <div className="mt-2 text-2xl font-semibold tracking-tight">{value}</div>
       {subtext ? (
@@ -372,16 +356,7 @@ export default function DashboardPage() {
   const [leadDrawerOpen, setLeadDrawerOpen] = React.useState(false);
   const [leadDrawerId, setLeadDrawerId] = React.useState<string | null>(null);
   const [contactDrawerId, setContactDrawerId] = React.useState<string | null>(null);
-  const [overdueTaskId, setOverdueTaskId] = React.useState<string | null>(null);
-  const [overdueOutcomeNote, setOverdueOutcomeNote] = React.useState("");
   const [isGenerating, setIsGenerating] = React.useState(false);
-  const [showFollowUpQueue, setShowFollowUpQueue] = React.useState(false);
-  const [quickFollowUpItem, setQuickFollowUpItem] = React.useState<FollowUpItem | null>(null);
-  const [showQuickLog, setShowQuickLog] = React.useState(false);
-  const [optimisticallyDoneFollowUps, setOptimisticallyDoneFollowUps] = React.useState<Set<string>>(
-    new Set()
-  );
-  const followUpQueueRef = React.useRef<HTMLDivElement | null>(null);
 
   const selectedLead = React.useMemo(() => {
     if (!leadDrawerId) return null;
@@ -392,41 +367,6 @@ export default function DashboardPage() {
     if (!contactDrawerId) return null;
     return contacts.items.find((c) => c.id === contactDrawerId) ?? null;
   }, [contacts.items, contactDrawerId]);
-
-  const followUpQueue = React.useMemo(
-    () =>
-      buildFollowUpQueue(
-        leads.items,
-        activities.items,
-        profile?.uid || "",
-        profile?.role || "agent"
-      ),
-    [leads.items, activities.items, profile?.uid, profile?.role]
-  );
-
-  const visibleFollowUpQueue = React.useMemo(
-    () => followUpQueue.filter((f) => !optimisticallyDoneFollowUps.has(f.leadId)),
-    [followUpQueue, optimisticallyDoneFollowUps]
-  );
-  const overdueCount = React.useMemo(
-    () => visibleFollowUpQueue.filter((f) => f.urgency === "overdue").length,
-    [visibleFollowUpQueue]
-  );
-  const todayCount = React.useMemo(
-    () => visibleFollowUpQueue.filter((f) => f.urgency === "today").length,
-    [visibleFollowUpQueue]
-  );
-
-  const followUpByLeadId = React.useMemo(() => {
-    const map = new Map<string, FollowUpItem>();
-    for (const item of visibleFollowUpQueue) map.set(item.leadId, item);
-    return map;
-  }, [visibleFollowUpQueue]);
-
-  function handleQuickFollowUp(item: FollowUpItem) {
-    setQuickFollowUpItem(item);
-    setShowQuickLog(true);
-  }
 
   React.useEffect(() => {
     try {
@@ -479,20 +419,6 @@ export default function DashboardPage() {
     const t = window.setTimeout(() => setShowConfetti(false), 2600);
     return () => window.clearTimeout(t);
   }, [onboardingDismissed, onboardingStarted, onboardingProgress]);
-
-  async function completeTask(taskId: string, outcome: string | null = null) {
-    try {
-      await updateDoc(doc(db, "tasks", taskId), {
-        status: "completed",
-        completedAt: serverTimestamp(),
-        outcome: outcome ?? "",
-        updatedAt: serverTimestamp(),
-      });
-      toast.success("Task completed");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to complete task");
-    }
-  }
 
   async function handleGenerateLeads() {
     if (!profile) return;
@@ -639,260 +565,11 @@ export default function DashboardPage() {
     return `Today: ${calls} ${callLabel} · ${siteVisits} ${siteLabel} · ${followUps} ${followLabel}`;
   }, [personalTodayActivities]);
 
-  const focus = React.useMemo(() => {
-    const now = new Date();
-    const todayEnd = addDays(todayStart, 1);
-    const sevenDaysAgo = addDays(todayStart, -7);
-
-    const visibleTasks = tasks.items.filter(
-      (t) => !isAgent || t.assignedToId === profile?.uid
-    );
-
-    const visibleLeads = leads.items.filter((l) => {
-      const ownerUid = l.assignedToUid ?? l.assignedRepId ?? "";
-      return !isAgent || ownerUid === profile?.uid;
-    });
-
-    const shareBrochureActions = visibleLeads
-      .filter((l) => l.status === "Send Brochure")
-      .map((l) => {
-        const contactId = l.contactId;
-        if (!contactId) return null;
-
-        const relevantActivities = activities.items.filter((a) => {
-          const aContactId = (a as unknown as { contactId?: string | null }).contactId ?? null;
-          if (aContactId !== contactId) return false;
-          if (isAgent) {
-            const createdBy = (a as unknown as { createdBy?: string }).createdBy;
-            return createdBy === profile?.uid;
-          }
-          return true;
-        });
-
-        const latestActivityMs =
-          relevantActivities.reduce((max, a) => {
-            const t = a.createdAt?.toMillis?.() ?? 0;
-            return t > max ? t : max;
-          }, 0) || 0;
-
-        const baseMs =
-          latestActivityMs ||
-          tsToDate(l.lastContactAt ?? l.createdAt)?.getTime() ||
-          now.getTime();
-        const hoursNoActivity = (now.getTime() - baseMs) / (3600 * 1000);
-        if (hoursNoActivity <= 24) return null;
-
-        const contact = contactById.get(contactId) ?? null;
-        const name = contact
-          ? `${contact.firstName} ${contact.lastName}`
-          : l.propertyType ?? "Lead";
-
-        return {
-          key: `share-${l.id}`,
-          priority: 0,
-          kind: "share_brochure" as const,
-          tone: "amber" as const,
-          title: `Share Brochure — ${Math.floor(hoursNoActivity)}h no activity`,
-          subtitle: `${name}${l.location ? ` • ${l.location}` : ""}`,
-          leadId: l.id as string,
-          hoursNoActivity,
-        };
-      })
-      .filter(
-        (x): x is {
-          key: string;
-          priority: number;
-          kind: "share_brochure";
-          tone: "amber";
-          title: string;
-          subtitle: string;
-          leadId: string;
-          hoursNoActivity: number;
-        } => !!x
-      )
-      .sort((a, b) => b.hoursNoActivity - a.hoursNoActivity);
-
-    const overdueTaskActions = visibleTasks
-      .filter((t) => t.isOverdue)
-      .sort((a, b) => (a.dueAt.toMillis() ?? 0) - (b.dueAt.toMillis() ?? 0))
-      .slice(0, 5)
-      .map((t) => {
-        const due = tsToDate(t.dueAt);
-        const daysOverdue = due
-          ? Math.max(1, Math.round((todayStart.getTime() - due.getTime()) / 86400000))
-          : 1;
-        const contact =
-          t.contactId && contactById.get(t.contactId)
-            ? contactById.get(t.contactId)
-            : null;
-        const lead = t.leadId ? visibleLeads.find((l) => l.id === t.leadId) ?? null : null;
-
-        return {
-          key: `overdue-${t.id}`,
-          priority: 1,
-          kind: "overdue_task" as const,
-          tone: "red" as const,
-          title: `${t.title || t.type} — ${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue`,
-          subtitle: lead
-            ? `${contact ? `${contact.firstName} ${contact.lastName}` : "Lead"} • ${lead.propertyType ?? "Lead"}`
-            : contact
-            ? `${contact.firstName} ${contact.lastName}`
-            : "",
-          taskId: t.id,
-        };
-      });
-
-    const coldLeadActions = visibleLeads
-      .filter((l) => l.status !== "Won" && l.status !== "Lost")
-      .map((l) => {
-        const last = tsToDate(l.lastContactAt) ?? tsToDate(l.createdAt);
-        if (!last) return null;
-        const daysNoContact = Math.floor(
-          (todayStart.getTime() - last.getTime()) / 86400000
-        );
-        return { lead: l, daysNoContact };
-      })
-      .filter(
-        (x): x is { lead: (typeof leads.items)[number]; daysNoContact: number } =>
-          !!x && x.daysNoContact >= 7 && x.lead.status !== "Won" && x.lead.status !== "Lost"
-      )
-      .sort((a, b) => b.daysNoContact - a.daysNoContact)
-      .slice(0, 5)
-      .map(({ lead, daysNoContact }) => {
-        const contact = lead.contactId ? contactById.get(lead.contactId) ?? null : null;
-        const name = contact ? `${contact.firstName} ${contact.lastName}` : lead.propertyType ?? "Lead";
-        return {
-          key: `cold-${lead.id}`,
-          priority: 2,
-          kind: "cold_lead" as const,
-          tone: "amber" as const,
-          title: `Call ${name} — ${daysNoContact} days no contact`,
-          subtitle: `${lead.propertyType ?? "Lead"}${lead.location ? ` • ${lead.location}` : ""}`,
-          leadId: lead.id as string,
-        };
-      });
-
-    const followUpOverdueActions = visibleFollowUpQueue
-      .filter((f) => f.urgency === "overdue")
-      .slice(0, 5)
-      .map((f) => ({
-        key: `followup-overdue-${f.leadId}`,
-        priority: 2,
-        kind: "followup_overdue" as const,
-        tone: "red" as const,
-        title: `Follow up ${f.contactName}`,
-        subtitle: f.reason,
-        leadId: f.leadId,
-      }));
-
-    const followUpTodayActions = visibleFollowUpQueue
-      .filter((f) => f.urgency === "today")
-      .slice(0, 5)
-      .map((f) => ({
-        key: `followup-today-${f.leadId}`,
-        priority: 3,
-        kind: "followup_today" as const,
-        tone: "amber" as const,
-        title: `Follow up ${f.contactName}`,
-        subtitle: f.reason,
-        leadId: f.leadId,
-      }));
-
-    const dueTodayTaskActions = visibleTasks
-      .filter((t) => {
-        if (t.status === "completed") return false;
-        const due = tsToDate(t.dueAt);
-        return !!due && due >= todayStart && due < todayEnd;
-      })
-      .sort((a, b) => a.dueAt.toMillis() - b.dueAt.toMillis())
-      .slice(0, 5)
-      .map((t) => {
-        const contact =
-          t.contactId && contactById.get(t.contactId)
-            ? contactById.get(t.contactId)
-            : null;
-        const lead = t.leadId ? visibleLeads.find((l) => l.id === t.leadId) ?? null : null;
-        return {
-          key: `todaytask-${t.id}`,
-          priority: 3,
-          kind: "due_today_task" as const,
-          tone: "blue" as const,
-          title: `${t.title || t.type} — due today`,
-          subtitle: lead
-            ? `${contact ? `${contact.firstName} ${contact.lastName}` : "Lead"} • ${lead.propertyType ?? "Lead"}`
-            : contact
-            ? `${contact.firstName} ${contact.lastName}`
-            : "",
-          taskId: t.id,
-        };
-      });
-
-    const cadenceLeadActions = visibleLeads
-      .filter((l) => l.cadenceId && l.status !== "Won" && l.status !== "Lost")
-      .map((l) => {
-        const cadence = DEFAULT_CADENCES.find((c) => c.id === l.cadenceId);
-        if (!cadence) return null;
-        const stepIndex = l.cadenceStepIndex ?? 0;
-        const step = cadence.steps[stepIndex] ?? cadence.steps[0];
-        const base = tsToDate(l.createdAt);
-        if (!base) return null;
-        const due = addDays(base, step.dayOffset);
-        return { lead: l, due, cadenceName: cadence.name };
-      })
-      .filter(
-        (x): x is {
-          lead: (typeof leads.items)[number];
-          due: Date;
-          cadenceName: string;
-        } => !!x && x.due <= now
-      )
-      .sort((a, b) => a.due.getTime() - b.due.getTime())
-      .slice(0, 5)
-      .map(({ lead, due, cadenceName }) => {
-        const contact = lead.contactId ? contactById.get(lead.contactId) ?? null : null;
-        const name = contact ? `${contact.firstName} ${contact.lastName}` : lead.propertyType ?? "Lead";
-        return {
-          key: `cad-${lead.id}`,
-          priority: 4,
-          kind: "cadence_lead" as const,
-          tone: "blue" as const,
-          title: `Cadence next action: ${name}`,
-          subtitle: `${cadenceName}${due ? ` • due ${due.toLocaleDateString()}` : ""}`,
-          leadId: lead.id as string,
-        };
-      });
-
-    const selected = [
-      ...overdueTaskActions,
-      ...followUpOverdueActions,
-      ...followUpTodayActions,
-      ...dueTodayTaskActions,
-      ...shareBrochureActions,
-      ...coldLeadActions,
-      ...cadenceLeadActions,
-    ].slice(0, 3);
-
-    return {
-      selected,
-      totalUrgent: selected.length,
-      remainingSlots: Math.max(0, 3 - selected.length),
-    };
-  }, [
-    tasks.items,
-    leads.items,
-    activities.items,
-    isAgent,
-    profile?.uid,
-    todayStart,
-    contactById,
-    visibleFollowUpQueue,
-  ]);
-
   if (loading) {
     return (
       <div className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          {Array.from({ length: 5 }).map((_, i) => (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-24 w-full" />
           ))}
         </div>
@@ -1087,161 +764,7 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      <Card className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-sm font-medium">Your focus for today</div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {new Date().toLocaleDateString(undefined, {
-                weekday: "long",
-                month: "short",
-                day: "numeric",
-              })}
-            </div>
-          </div>
-        </div>
-
-        {focus.selected.length === 0 ? (
-          <div className="mt-4 rounded-lg bg-green-50 p-4 text-sm text-green-700">
-            Great work! No urgent actions today 🎉
-          </div>
-        ) : (
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            {focus.selected.map((action) => (
-              <div
-                key={action.key}
-                className="rounded-lg border bg-card p-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3 min-w-0">
-                    {action.kind === "share_brochure" && (
-                      <div className="rounded-lg bg-amber-50 p-2 text-amber-600">
-                        <MessageSquare className="h-5 w-5" />
-                      </div>
-                    )}
-                    {action.tone === "red" && (
-                      <div className="rounded-lg bg-red-50 p-2 text-red-600">
-                        <AlertTriangle className="h-5 w-5" />
-                      </div>
-                    )}
-                    {action.tone === "amber" && action.kind !== "share_brochure" && (
-                      <div className="rounded-lg bg-amber-50 p-2 text-amber-600">
-                        <Phone className="h-5 w-5" />
-                      </div>
-                    )}
-                    {action.tone === "blue" && (
-                      <div className="rounded-lg bg-blue-50 p-2 text-blue-600">
-                        <Clock className="h-5 w-5" />
-                      </div>
-                    )}
-
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium">{action.title}</div>
-                      {action.subtitle ? (
-                        <div className="mt-1 text-xs text-muted-foreground truncate">
-                          {action.subtitle}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                  <div className="shrink-0">
-                    {action.kind === "overdue_task" ? (
-                      <Popover
-                        open={overdueTaskId === action.taskId}
-                        onOpenChange={(o) => setOverdueTaskId(o ? action.taskId : null)}
-                      >
-                        <PopoverTrigger asChild>
-                          <Button
-                            size="sm"
-                            className="h-8"
-                            onClick={() => setOverdueOutcomeNote("")}
-                          >
-                            Do it →
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent align="end" className="w-80">
-                          <div className="grid gap-2">
-                            <div className="text-sm font-medium">Outcome note (optional)</div>
-                            <Textarea
-                              value={overdueOutcomeNote}
-                              placeholder="Short note for the task completion"
-                              onChange={(e) => setOverdueOutcomeNote(e.target.value)}
-                              rows={3}
-                            />
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setOverdueTaskId(null);
-                                  setOverdueOutcomeNote("");
-                                }}
-                              >
-                                Cancel
-                              </Button>
-                              <Button
-                                size="sm"
-                                onClick={() => {
-                                  void completeTask(action.taskId, overdueOutcomeNote);
-                                  setOverdueTaskId(null);
-                                  setOverdueOutcomeNote("");
-                                }}
-                              >
-                                Complete
-                              </Button>
-                            </div>
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                    ) : action.kind === "due_today_task" ? (
-                      <Button
-                        size="sm"
-                        className="h-8"
-                        onClick={() => {
-                          void completeTask(action.taskId);
-                        }}
-                      >
-                        Do it →
-                      </Button>
-                    ) : action.kind === "followup_overdue" || action.kind === "followup_today" ? (
-                      <Button
-                        size="sm"
-                        className="h-8"
-                        onClick={() => {
-                          const item = followUpByLeadId.get(action.leadId);
-                          if (!item) return;
-                          handleQuickFollowUp(item);
-                        }}
-                      >
-                        Do it →
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        className="h-8"
-                        onClick={() => {
-                          setLeadDrawerId(action.leadId);
-                          setLeadDrawerOpen(true);
-                        }}
-                      >
-                        Do it →
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {focus.remainingSlots > 0 ? (
-              <div className="rounded-lg border bg-muted/20 p-4 md:col-span-2">
-                <div className="text-sm font-medium">You&apos;re all caught up here 🎉</div>
-              </div>
-            ) : null}
-          </div>
-        )}
-      </Card>
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Link
           href="/contacts"
           className="block"
@@ -1262,45 +785,6 @@ export default function DashboardPage() {
             className="cursor-pointer transition-all hover:border-primary/30 hover:shadow-md"
           />
         </Link>
-        <button
-          type="button"
-          onClick={() => {
-            setShowFollowUpQueue(true);
-            followUpQueueRef.current?.scrollIntoView({
-              behavior: "smooth",
-              block: "start",
-            });
-          }}
-          className="block text-left"
-        >
-          <KpiCard
-            label={visibleFollowUpQueue.length > 0 ? "Need Follow Up" : "Follow Ups"}
-            value={visibleFollowUpQueue.length}
-            subtext={
-              overdueCount > 0
-                ? `${overdueCount} never contacted`
-                : todayCount > 0
-                ? `${todayCount} going cold`
-                : "All leads active ✓"
-            }
-            icon={RefreshCw}
-            highlight={
-              overdueCount > 0
-                ? "red"
-                : todayCount > 0
-                ? "amber"
-                : "green"
-            }
-            className={cn(
-              "cursor-pointer border-t-2 transition-all hover:border-primary/30 hover:shadow-md",
-              visibleFollowUpQueue.length > 5
-                ? "border-t-red-500"
-                : visibleFollowUpQueue.length > 0
-                ? "border-t-amber-500"
-                : "border-t-green-500"
-            )}
-          />
-        </button>
         <Link
           href="/leads?status=won"
           className="block"
@@ -1331,95 +815,6 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      {visibleFollowUpQueue.length > 0 && (
-        <Card
-          ref={followUpQueueRef}
-          className={cn(
-            "p-4 transition-all",
-            showFollowUpQueue ? "border-primary/40" : ""
-          )}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <div className="text-sm font-medium">
-                Follow Up Queue ({visibleFollowUpQueue.length})
-              </div>
-            </div>
-            {visibleFollowUpQueue.length > 5 ? (
-              <Link href="/leads" className="text-xs text-primary hover:underline">
-                View all {visibleFollowUpQueue.length} →
-              </Link>
-            ) : null}
-          </div>
-
-          <div className="mt-3 space-y-2">
-            {visibleFollowUpQueue.slice(0, 5).map((item) => (
-              <div
-                key={`${item.leadId}-${item.reason}`}
-                className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 transition-colors hover:bg-muted/50"
-              >
-                <div
-                  className={cn(
-                    "h-2 w-2 flex-shrink-0 rounded-full",
-                    item.urgency === "overdue"
-                      ? "bg-red-500"
-                      : item.urgency === "today"
-                      ? "bg-amber-500"
-                      : "bg-blue-400"
-                  )}
-                />
-
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold">{item.contactName}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {item.propertyType} · {item.reason}
-                  </p>
-                </div>
-
-                <span
-                  className={cn(
-                    "flex-shrink-0 rounded-full px-2 py-1 text-xs font-medium",
-                    item.urgency === "overdue"
-                      ? "bg-red-100 text-red-700"
-                      : item.urgency === "today"
-                      ? "bg-amber-100 text-amber-700"
-                      : "bg-blue-100 text-blue-700"
-                  )}
-                >
-                  {item.daysSinceContact ? `${item.daysSinceContact}d` : "New"}
-                </span>
-
-                <div className="flex flex-shrink-0 items-center gap-1">
-                  {item.contactPhone ? (
-                    <a
-                      href={`https://wa.me/${item.contactPhone.replace(/\D/g, "")}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="rounded-lg p-1.5 text-green-600 hover:bg-green-50"
-                      title="WhatsApp"
-                    >
-                      <MessageCircle className="h-4 w-4" />
-                    </a>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => handleQuickFollowUp(item)}
-                    className="rounded-lg px-2 py-1.5 text-xs font-medium text-primary hover:bg-primary/10"
-                    title="Log follow up"
-                  >
-                    <span className="inline-flex items-center gap-1">
-                      <CheckCircle2 className="h-4 w-4" />
-                      Log Follow Up
-                    </span>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
       <LeadDetailDrawer
         lead={selectedLead}
         open={leadDrawerOpen}
@@ -1435,29 +830,6 @@ export default function DashboardPage() {
           if (!o) setContactDrawerId(null);
         }}
       />
-      <QuickFollowUpDialog
-        open={showQuickLog}
-        onOpenChange={setShowQuickLog}
-        item={quickFollowUpItem}
-        userProfile={
-          profile ? { uid: profile.uid, displayName: profile.displayName } : null
-        }
-        onBeforeSubmit={(item) => {
-          setOptimisticallyDoneFollowUps((prev) => {
-            const next = new Set(prev);
-            next.add(item.leadId);
-            return next;
-          });
-        }}
-        onErrorRevert={(item) => {
-          setOptimisticallyDoneFollowUps((prev) => {
-            const next = new Set(prev);
-            next.delete(item.leadId);
-            return next;
-          });
-        }}
-      />
-
       {overdue.length > 0 && (
         <Card className="border-destructive/30 bg-destructive/5 p-4">
           <div className="text-sm font-medium">Overdue tasks</div>
