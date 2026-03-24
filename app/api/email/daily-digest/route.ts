@@ -35,24 +35,29 @@ export async function POST(req: NextRequest) {
 
       const activitiesSnap = await db
         .collection("activities")
-        .where("createdBy", "==", memberDoc.id)
         .where("createdAt", ">=", Timestamp.fromDate(yesterday))
         .where("createdAt", "<=", Timestamp.fromDate(yesterdayEnd))
         .get();
 
-      const activities = activitiesSnap.docs.map((d) => d.data() as { type?: string });
-      const contactsMade = activities.filter(
+      const allActivities = activitiesSnap.docs.map(
+        (d) => d.data() as { type?: string; createdByName?: string; createdBy?: string }
+      );
+      const memberActivities = allActivities.filter(
+        (a) => a.createdByName === member.name || a.createdBy === memberDoc.id
+      );
+
+      const contactsMade = memberActivities.filter(
         (a) => a.type === "Call" || a.type === "Contact Made"
       ).length;
-      const siteVisits = activities.filter(
+      const siteVisits = memberActivities.filter(
         (a) => a.type === "Site Visit" || a.type === "Meeting"
       ).length;
-      const followUps = activities.filter((a) => a.type === "Follow Up").length;
+      const followUps = memberActivities.filter((a) => a.type === "Follow Up").length;
 
       const leadsSnap = await db
         .collection("leads")
-        .where("assignedToUid", "==", memberDoc.id)
-        .where("status", "in", ["Initial Contact", "Send Brochure", "Arrange Visit"])
+        .where("assignedTo", "==", member.name || "")
+        .where("status", "in", ["new", "contacted", "qualified"])
         .get();
       const openLeads = leadsSnap.size;
       const pipelineValue = leadsSnap.docs.reduce(
