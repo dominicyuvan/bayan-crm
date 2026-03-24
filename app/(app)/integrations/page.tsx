@@ -247,16 +247,6 @@ export default function IntegrationsPage() {
           )}
         </Card>
 
-        <Card className="p-4 space-y-2 text-sm text-muted-foreground">
-          <div className="text-sm font-semibold text-foreground">
-            Coming soon
-          </div>
-          <ul className="list-disc pl-5 space-y-1">
-            <li>WhatsApp chat export parser</li>
-            <li>CRM-to-CRM integrations</li>
-            <li>Scheduled nightly syncs</li>
-          </ul>
-        </Card>
       </div>
     </div>
   );
