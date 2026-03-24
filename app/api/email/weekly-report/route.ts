@@ -3,9 +3,10 @@ import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { sendEmail, buildWeeklyReportHtml } from "@/lib/email";
 import { initAdmin } from "@/lib/firebase-admin";
 
-type ActivityRow = { createdBy?: string; type?: string };
+type ActivityRow = { createdBy?: string; createdByName?: string; type?: string };
 type LeadRow = {
   assignedToUid?: string;
+  assignedTo?: string;
   value?: number;
   updatedAt?: { toDate?: () => Date };
 };
@@ -48,13 +49,24 @@ export async function POST(req: NextRequest) {
       });
 
     const teamStats = teamSnap.docs
-      .map((doc) => {
-        const member = doc.data() as { name?: string; role?: string };
-        const memberActivities = allActivities.filter((a) => a.createdBy === doc.id);
-        const memberWon = wonLeads.filter((l) => l.assignedToUid === doc.id);
+      .map((memberDoc) => {
+        const member = memberDoc.data() as {
+          name?: string;
+          displayName?: string;
+          uid?: string;
+          role?: string;
+        };
+        const memberName = member.name || member.displayName || "";
+        const memberUid = member.uid || memberDoc.id;
+        const memberActivities = allActivities.filter(
+          (a) => a.createdBy === memberUid || a.createdByName === memberName
+        );
+        const memberWon = wonLeads.filter(
+          (l) => l.assignedToUid === memberUid || l.assignedTo === memberName
+        );
 
         return {
-          name: member.name || "",
+          name: memberName,
           role: member.role || "",
           contactsMade: memberActivities.filter(
             (a) => a.type === "Call" || a.type === "Contact Made"

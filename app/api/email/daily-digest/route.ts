@@ -30,8 +30,12 @@ export async function POST(req: NextRequest) {
       const member = memberDoc.data() as {
         email?: string;
         name?: string;
+        displayName?: string;
+        uid?: string;
       };
       if (!member.email) continue;
+      const memberUid = member.uid || memberDoc.id;
+      const memberName = member.name || member.displayName || "";
 
       const activitiesSnap = await db
         .collection("activities")
@@ -43,7 +47,7 @@ export async function POST(req: NextRequest) {
         (d) => d.data() as { type?: string; createdByName?: string; createdBy?: string }
       );
       const memberActivities = allActivities.filter(
-        (a) => a.createdByName === member.name || a.createdBy === memberDoc.id
+        (a) => a.createdBy === memberUid || a.createdByName === memberName
       );
 
       const contactsMade = memberActivities.filter(
@@ -56,7 +60,7 @@ export async function POST(req: NextRequest) {
 
       const leadsSnap = await db
         .collection("leads")
-        .where("assignedTo", "==", member.name || "")
+        .where("assignedTo", "==", memberName)
         .where("status", "in", ["new", "contacted", "qualified"])
         .get();
       const openLeads = leadsSnap.size;
@@ -65,7 +69,7 @@ export async function POST(req: NextRequest) {
         0
       );
 
-      const firstName = member.name?.split(" ")[0] || "there";
+      const firstName = (member.name || member.displayName || "there").split(" ")[0];
       const html = buildDailyDigestHtml({
         firstName,
         contactsMade,
