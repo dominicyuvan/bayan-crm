@@ -7,6 +7,12 @@ import { TopBar } from "@/components/top-bar";
 import { MobileNav } from "@/components/mobile-nav";
 import { AuthGuard } from "@/components/auth-guard";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useLogActivityControl } from "@/lib/log-activity-control-context";
+
+function MobileNavWithControl() {
+  const { setOpen } = useLogActivityControl();
+  return <MobileNav onLogActivity={() => setOpen(true)} />;
+}
 
 export function ShellLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -37,7 +43,7 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
           </main>
         </div>
       </div>
-      <MobileNav onLogActivity={() => {}} />
+      <MobileNavWithControl />
     </div>
   );
 }
