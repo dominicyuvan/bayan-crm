@@ -1,7 +1,7 @@
 import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM_EMAIL = `Bayan CRM <${process.env.RESEND_FROM_EMAIL || "crm@bayaninvestment.com"}>`;
+const FROM_EMAIL = "Bayan CRM <crm@bayan.one>";
 
 export async function sendEmail({
   to,
