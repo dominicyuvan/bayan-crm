@@ -4,7 +4,11 @@ import { sendEmail, buildWeeklyReportHtml } from "@/lib/email";
 import { initAdmin } from "@/lib/firebase-admin";
 
 type ActivityRow = { createdBy?: string; type?: string };
-type LeadRow = { assignedToUid?: string; value?: number };
+type LeadRow = {
+  assignedToUid?: string;
+  value?: number;
+  updatedAt?: { toDate?: () => Date };
+};
 
 export async function POST(req: NextRequest) {
   const secret = req.headers.get("x-cron-secret");
@@ -33,12 +37,15 @@ export async function POST(req: NextRequest) {
       .get();
     const allActivities = activitiesSnap.docs.map((d) => d.data() as ActivityRow);
 
-    const leadsSnap = await db
-      .collection("leads")
-      .where("status", "==", "Won")
-      .where("updatedAt", ">=", Timestamp.fromDate(weekStart))
-      .get();
-    const wonLeads = leadsSnap.docs.map((d) => d.data() as LeadRow);
+    const leadsSnap = await db.collection("leads").where("status", "==", "won").get();
+
+    const wonLeads = leadsSnap.docs
+      .map((d) => ({ id: d.id, ...(d.data() as LeadRow) }))
+      .filter((l) => {
+        const updated = l.updatedAt?.toDate?.();
+        if (!updated) return false;
+        return updated >= weekStart;
+      });
 
     const teamStats = teamSnap.docs
       .map((doc) => {
