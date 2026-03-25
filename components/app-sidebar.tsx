@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import {
-  BarChart3Icon,
+  BarChart2Icon,
   Building2Icon,
   CalendarClockIcon,
   ChevronsLeftRightIcon,
   LayoutDashboardIcon,
   Settings2Icon,
-  UsersIcon,
+  UsersRound,
   WorkflowIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -18,33 +18,34 @@ import { Button } from "@/components/ui/button";
 
 type NavItem = {
   href: string;
-  label: string;
+  name: string;
   icon: React.ComponentType<{ className?: string }>;
+  roles?: ("admin" | "manager")[];
   managerOnly?: boolean;
   adminOnly?: boolean;
 };
 
 const navItems: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboardIcon },
-  { href: "/contacts", label: "Contacts", icon: Building2Icon },
-  { href: "/leads", label: "Leads", icon: WorkflowIcon },
-  { href: "/tasks", label: "Tasks", icon: CalendarClockIcon },
+  { href: "/dashboard", name: "Dashboard", icon: LayoutDashboardIcon },
+  { href: "/contacts", name: "Contacts", icon: Building2Icon },
+  { href: "/leads", name: "Leads", icon: WorkflowIcon },
+  { href: "/tasks", name: "Tasks", icon: CalendarClockIcon },
   {
     href: "/cadences",
-    label: "Cadences",
+    name: "Cadences",
     icon: Settings2Icon,
     managerOnly: true,
   },
-  { href: "/team", label: "Team", icon: UsersIcon, adminOnly: true },
+  { href: "/team", name: "Team", icon: UsersRound, roles: ["admin", "manager"] },
   {
     href: "/reports",
-    label: "Reports",
-    icon: BarChart3Icon,
-    managerOnly: true,
+    name: "Reports",
+    icon: BarChart2Icon,
+    roles: ["admin", "manager"],
   },
   {
     href: "/integrations",
-    label: "Integrations",
+    name: "Integrations",
     icon: Settings2Icon,
     adminOnly: true,
   },
@@ -94,6 +95,9 @@ export function AppSidebar({
       <nav className="flex-1 space-y-1 px-2">
         {navItems
           .filter((i) => {
+            if (i.roles) {
+              return i.roles.includes(role as "admin" | "manager");
+            }
             if (i.adminOnly) return isAdmin;
             if (i.managerOnly) return isManager;
             return true;
@@ -113,7 +117,7 @@ export function AppSidebar({
               >
                 <Icon className="size-4 shrink-0" />
                 <span className={cn("truncate", collapsed && "sr-only")}>
-                  {item.label}
+                  {item.name}
                 </span>
               </Link>
             );

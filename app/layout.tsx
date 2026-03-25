@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Bayan CRM",
-  description: "Sales CRM for Bayan Investment (Muscat, Oman)",
+  description: "Sales CRM for Bayan Investment House LLC (Muscat, Oman)",
   themeColor: "#810c3c",
 };
 

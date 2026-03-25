@@ -60,6 +60,7 @@ function AddEditMemberDialog({
   mode: "add" | "edit";
   member?: (TeamMember & { id: string }) | null;
 }) {
+  const { profile: userProfile } = useAuth();
   const [open, setOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const [name, setName] = React.useState(member?.name ?? "");
@@ -108,6 +109,31 @@ function AddEditMemberDialog({
         } satisfies WithFieldValue<TeamMember>;
 
         await addDoc(teamMembersCol, payload);
+
+        // Send invite email to newly added team member (non-blocking for save).
+        try {
+          await fetch("/api/email/invite", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-cron-secret":
+                process.env.NEXT_PUBLIC_CRON_SECRET ||
+                "bayan_cron_secret_2024",
+            },
+            body: JSON.stringify({
+              name: name.trim(),
+              email: email.toLowerCase(),
+              role,
+              invitedBy: userProfile?.displayName || "Admin",
+            }),
+          });
+        } catch (inviteErr) {
+          toast.error(
+            inviteErr instanceof Error
+              ? `Saved team member, but invite email failed: ${inviteErr.message}`
+              : "Saved team member, but invite email failed"
+          );
+        }
       } else if (member) {
         const ref = doc(db, "team_members", member.id);
         await updateDoc(ref, {

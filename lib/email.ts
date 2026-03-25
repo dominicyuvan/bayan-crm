@@ -112,7 +112,7 @@ export function buildDailyDigestHtml({
     </div>
 
     <p style="text-align:center;color:#A3A3A3;font-size:12px;margin:0;">
-      Bayan Investment · Muscat, Oman<br>
+      Bayan Investment House LLC · Muscat, Oman<br>
       <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://bayan-crm.vercel.app"}" style="color:#810c3c;">${
     process.env.NEXT_PUBLIC_APP_URL || "bayan-crm.vercel.app"
   }</a>
@@ -240,7 +240,7 @@ export function buildWeeklyReportHtml({
     </div>
 
     <p style="text-align:center;color:#A3A3A3;font-size:12px;margin:0;">
-      Bayan Investment · Muscat, Oman
+      Bayan Investment House LLC · Muscat, Oman
     </p>
   </div>
 </body>
