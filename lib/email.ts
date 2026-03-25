@@ -105,7 +105,7 @@ export function buildDailyDigestHtml({
     </div>
 
     <div style="text-align:center;margin-bottom:16px;">
-      <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://bayan-crm.vercel.app"}/dashboard" 
+      <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://crm.bayan.one"}/dashboard" 
         style="display:inline-block;background:#810c3c;color:white;padding:14px 32px;border-radius:50px;text-decoration:none;font-weight:600;font-size:15px;">
         Open My Dashboard →
       </a>
@@ -113,8 +113,8 @@ export function buildDailyDigestHtml({
 
     <p style="text-align:center;color:#A3A3A3;font-size:12px;margin:0;">
       Bayan Investment House LLC · Muscat, Oman<br>
-      <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://bayan-crm.vercel.app"}" style="color:#810c3c;">${
-    process.env.NEXT_PUBLIC_APP_URL || "bayan-crm.vercel.app"
+      <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://crm.bayan.one"}" style="color:#810c3c;">${
+    process.env.NEXT_PUBLIC_APP_URL || "crm.bayan.one"
   }</a>
     </p>
   </div>
@@ -233,7 +233,7 @@ export function buildWeeklyReportHtml({
     </div>
 
     <div style="text-align:center;margin-bottom:16px;">
-      <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://bayan-crm.vercel.app"}/reports" 
+      <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://crm.bayan.one"}/reports" 
         style="display:inline-block;background:#810c3c;color:white;padding:14px 32px;border-radius:50px;text-decoration:none;font-weight:600;font-size:15px;">
         View Full Reports →
       </a>

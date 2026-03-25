@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
       <div style="background:#FDF2F6;border-radius:8px;padding:16px;margin-bottom:24px;">
         <p style="margin:0;font-size:13px;color:#810c3c;font-weight:600;">Getting started checklist:</p>
         <ul style="margin:8px 0 0;padding-left:20px;color:#737373;font-size:13px;line-height:1.8;">
-          <li>Sign in at bayan-crm.vercel.app</li>
+          <li>Sign in at crm.bayan.one</li>
           <li>Add your first contact</li>
           <li>Create your first lead</li>
           <li>Log your first activity</li>
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
       </div>
 
       <div style="text-align:center;">
-        <a href="https://bayan-crm.vercel.app/login" 
+        <a href="https://crm.bayan.one/login" 
           style="display:inline-block;background:#810c3c;color:white;padding:16px 40px;border-radius:50px;text-decoration:none;font-weight:600;font-size:16px;">
           Sign In to Bayan CRM →
         </a>
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
         <tr>
           <td style="padding:8px 0;color:#737373;font-size:14px;">Login URL</td>
           <td style="padding:8px 0;font-size:14px;">
-            <a href="https://bayan-crm.vercel.app/login" style="color:#810c3c;">bayan-crm.vercel.app</a>
+            <a href="https://crm.bayan.one/login" style="color:#810c3c;">crm.bayan.one</a>
           </td>
         </tr>
       </table>

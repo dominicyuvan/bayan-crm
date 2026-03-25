@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import {
   Card,
   CardContent,
@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Bell, Camera, Lock, LogOut, Save, User } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { db } from "@/lib/firestore";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { collection, doc, getDocs, query, updateDoc, where } from "firebase/firestore";
 import {
   EmailAuthProvider,
   reauthenticateWithCredential,
@@ -27,6 +27,7 @@ import {
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 export default function ProfilePage() {
   const { profile, signOut } = useAuth();
@@ -36,6 +37,9 @@ export default function ProfilePage() {
   const [phone, setPhone] = useState("");
   const [jobTitle, setJobTitle] = useState("");
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  const [photoURL, setPhotoURL] = useState(auth.currentUser?.photoURL || "");
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -53,14 +57,26 @@ export default function ProfilePage() {
     setFirstName(profile?.firstName || "");
   }, [profile?.displayName, profile?.firstName]);
 
+  const getTeamMemberDoc = async () => {
+    if (!profile?.email) return null;
+    const snap = await getDocs(
+      query(
+        collection(db, "team_members"),
+        where("email", "==", profile.email.toLowerCase())
+      )
+    );
+    return snap.empty ? null : snap.docs[0];
+  };
+
   useEffect(() => {
     async function loadMember() {
-      if (!profile?.uid) return;
       try {
-        const snap = await getDoc(doc(db, "team_members", profile.uid));
-        const data = snap.exists() ? (snap.data() as any) : null;
+        const memberDoc = await getTeamMemberDoc();
+        if (!memberDoc) return;
+        const data = memberDoc.data() as any;
         setPhone((data?.phone as string) || "");
         setJobTitle((data?.jobTitle as string) || "");
+        setPhotoURL((data?.photoURL as string) || photoURL);
         const prefs = (data?.preferences as any) || {};
         setEmailDigest(prefs.emailDigest !== false);
         setWeeklyReport(prefs.weeklyReport !== false);
@@ -69,7 +85,67 @@ export default function ProfilePage() {
       }
     }
     void loadMember();
-  }, [profile?.uid]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.email]);
+
+  const handlePhotoChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !auth.currentUser) return;
+
+    // Validate file
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image must be less than 5MB");
+      return;
+    }
+
+    setIsUploadingPhoto(true);
+    try {
+      // Import Firebase Storage
+      const { ref, uploadBytes, getDownloadURL } = await import(
+        "firebase/storage"
+      );
+      const { storage } = await import("@/lib/firebase");
+
+      // Upload to Firebase Storage
+      const storageRef = ref(
+        storage,
+        `profile-photos/${auth.currentUser.uid}`
+      );
+      await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(storageRef);
+
+      // Update Firebase Auth profile
+      await updateProfile(auth.currentUser, { photoURL: downloadURL });
+
+      // Update Firestore team_members
+      const memberDoc = await getTeamMemberDoc();
+      if (memberDoc) {
+        await updateDoc(doc(db, "team_members", memberDoc.id), {
+          photoURL: downloadURL,
+        });
+      }
+
+      setPhotoURL(downloadURL);
+      toast.success("Profile photo updated ✓");
+    } catch (err: any) {
+      console.error("Photo upload error:", err);
+      if (err?.code === "storage/unauthorized") {
+        toast.error(
+          "Permission denied — enable Firebase Storage in console"
+        );
+      } else {
+        toast.error(`Failed to upload photo: ${err?.message || "Unknown error"}`);
+      }
+    } finally {
+      setIsUploadingPhoto(false);
+      // Reset file input
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   const handleSaveProfile = async () => {
     if (!profile?.uid) return;
@@ -186,23 +262,34 @@ export default function ProfilePage() {
           <div className="flex items-center gap-4">
             <div className="relative">
               <Avatar className="h-20 w-20">
-                <AvatarImage src={auth.currentUser?.photoURL || undefined} />
+                <AvatarImage src={photoURL || undefined} />
                 <AvatarFallback className="bg-primary text-primary-foreground text-2xl font-bold">
                   {initials}
                 </AvatarFallback>
               </Avatar>
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-white shadow-md hover:bg-primary/90"
+                onClick={() =>
+                  !isUploadingPhoto && fileInputRef.current?.click()
+                }
+                disabled={isUploadingPhoto}
+                className={cn(
+                  "absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-white shadow-md hover:bg-primary/90",
+                  "disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+                )}
               >
-                <Camera className="h-3.5 w-3.5" />
+                {isUploadingPhoto ? (
+                  <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                ) : (
+                  <Camera className="h-3.5 w-3.5" />
+                )}
               </button>
               <input
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
                 className="hidden"
+                onChange={handlePhotoChange}
               />
             </div>
             <div>
