@@ -125,21 +125,27 @@ export function AppSidebar({
       </nav>
 
       <div className="border-t border-sidebar-border p-3">
-        <div className={cn("flex items-center gap-3", collapsed && "justify-center")}>
+        <Link
+          href="/profile"
+          className={cn(
+            "flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-sidebar-accent/50",
+            collapsed && "justify-center"
+          )}
+        >
           <Avatar className="size-8">
             <AvatarFallback className="bg-sidebar-accent text-sidebar-foreground">
               {profile?.initials ?? "U"}
             </AvatarFallback>
           </Avatar>
-            <div className={cn("min-w-0", collapsed && "sr-only")}>
-              <div className="truncate text-sm font-medium">
-                {profile?.displayName ?? profile?.email ?? "User"}
-              </div>
-              <div className="truncate text-xs text-sidebar-foreground/70">
-                {profile?.role ?? ""}
-              </div>
+          <div className={cn("min-w-0", collapsed && "sr-only")}>
+            <div className="truncate text-sm font-medium">
+              {profile?.displayName ?? profile?.email ?? "User"}
             </div>
-        </div>
+            <div className="truncate text-xs text-sidebar-foreground/70">
+              {profile?.role ?? ""}
+            </div>
+          </div>
+        </Link>
       </div>
     </aside>
   );

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
-import { Bell, LogOutIcon, SearchIcon } from "lucide-react";
+import { Bell, LogOutIcon, SearchIcon, User } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { useContacts, useFirestore, useLeads, useTasks } from "@/lib/firestore-provider";
@@ -349,6 +349,10 @@ export function TopBar() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => router.push("/profile")}>
+                <User className="mr-2 size-4" />
+                My Profile
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={onSignOut}>
                 <LogOutIcon className="mr-2 size-4" />
                 Sign out

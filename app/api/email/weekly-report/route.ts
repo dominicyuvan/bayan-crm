@@ -55,7 +55,12 @@ export async function POST(req: NextRequest) {
           displayName?: string;
           uid?: string;
           role?: string;
+          preferences?: { weeklyReport?: boolean };
         };
+        const prefs = member.preferences || {};
+        if (prefs.weeklyReport === false) {
+          return null;
+        }
         const memberName = member.name || member.displayName || "";
         const memberUid = member.uid || memberDoc.id;
         const memberActivities = allActivities.filter(
@@ -80,6 +85,7 @@ export async function POST(req: NextRequest) {
           activitiesTotal: memberActivities.length,
         };
       })
+      .filter((x): x is NonNullable<typeof x> => !!x)
       .sort((a, b) => b.dealsWon - a.dealsWon);
 
     const topPerformer = teamStats[0]?.dealsWon > 0 ? teamStats[0].name : "";
@@ -108,7 +114,10 @@ export async function POST(req: NextRequest) {
     });
 
     const managers = teamSnap.docs.filter((d) => {
-      const role = (d.data() as { role?: string }).role;
+      const data = d.data() as { role?: string; preferences?: { weeklyReport?: boolean } };
+      const prefs = data.preferences || {};
+      if (prefs.weeklyReport === false) return false;
+      const role = data.role;
       return role === "admin" || role === "manager";
     });
 

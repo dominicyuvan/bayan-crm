@@ -32,8 +32,11 @@ export async function POST(req: NextRequest) {
         name?: string;
         displayName?: string;
         uid?: string;
+        preferences?: { emailDigest?: boolean };
       };
       if (!member.email) continue;
+      const prefs = member.preferences || {};
+      if (prefs.emailDigest === false) continue;
       const memberUid = member.uid || memberDoc.id;
       const memberName = member.name || member.displayName || "";
 
