@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/card";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { user, loading, signInWithGoogle, signInWithEmail } = useAuth();
+  const { user, loading, signInWithEmail } = useAuth();
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
@@ -34,28 +34,11 @@ export default function LoginPage() {
     }
   }
 
-  async function onGoogle() {
-    setSubmitting(true);
-    try {
-      await signInWithGoogle();
-      toast.success("Signed in");
-      router.replace("/dashboard");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Sign in failed");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   return (
     <div className="min-h-dvh bg-background">
       <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-4 py-10">
         <div className="mb-6">
           <div className="text-lg font-semibold tracking-tight">Bayan CRM</div>
-          <div className="text-sm text-muted-foreground">
-            Only <span className="font-medium">@bayaninvestment.com</span>{" "}
-            accounts are allowed.
-          </div>
         </div>
 
         <Card className="p-5">
@@ -87,21 +70,6 @@ export default function LoginPage() {
               Sign in
             </Button>
           </form>
-
-          <div className="my-4 flex items-center gap-3">
-            <div className="h-px flex-1 bg-border" />
-            <div className="text-xs text-muted-foreground">or</div>
-            <div className="h-px flex-1 bg-border" />
-          </div>
-
-          <Button
-            className="w-full"
-            variant="outline"
-            onClick={onGoogle}
-            disabled={submitting}
-          >
-            Continue with Google
-          </Button>
         </Card>
       </div>
     </div>
