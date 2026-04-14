@@ -38,13 +38,10 @@ export default function ContactsPage() {
     return contacts.items.find((c) => c.id === selectedId) ?? null;
   }, [contacts.items, selectedId]);
 
+  // Contacts are org-wide (single Firestore collection); all roles see the same list.
   const filtered = React.useMemo(() => {
     const query = q.trim().toLowerCase();
     return contacts.items.filter((c) => {
-      const ownerUid = c.assignedToUid ?? c.assignedRepId ?? "";
-      if (role === "agent" && ownerUid !== profile?.uid) {
-        return false;
-      }
       const name = `${c.firstName} ${c.lastName}`.toLowerCase();
       const company = (c.company ?? "").toLowerCase();
       const phone = (c.phone ?? "").toLowerCase();
@@ -53,7 +50,7 @@ export default function ContactsPage() {
       const matchesSource = source === "all" || c.source === source;
       return matchesQ && matchesSource;
     });
-  }, [contacts.items, q, source, role, profile?.uid]);
+  }, [contacts.items, q, source]);
 
   const visibleActivities = React.useMemo(() => {
     if (!profile?.uid) return [];
