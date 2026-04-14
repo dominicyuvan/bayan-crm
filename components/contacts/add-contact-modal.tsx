@@ -12,9 +12,15 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { SOURCE_OPTIONS } from "@/lib/constants";
+import { canManageEntity } from "@/lib/permissions";
 
 export function AddContactModal() {
   const { profile } = useAuth();
+  const canCreateContact = canManageEntity({
+    role: profile?.role,
+    entity: "contacts",
+    action: "create",
+  });
   const [open, setOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -39,6 +45,11 @@ export function AddContactModal() {
   }
 
   async function handleSubmit() {
+    if (!canCreateContact) {
+      toast.error("You do not have permission to add contacts");
+      return;
+    }
+
     const formData = {
       firstName,
       lastName,
@@ -114,7 +125,7 @@ export function AddContactModal() {
       }}
     >
       <DialogTrigger asChild>
-        <Button>Add Contact</Button>
+        <Button disabled={!canCreateContact}>Add Contact</Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>

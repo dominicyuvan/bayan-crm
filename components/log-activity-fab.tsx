@@ -23,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
+import { canManageEntity } from "@/lib/permissions";
 
 export type LogActivityFabProps = {
   preselectedContactId?: string;
@@ -88,6 +89,16 @@ export function LogActivityFab({
   onExternalOpenChange,
 }: LogActivityFabProps) {
   const { profile } = useAuth();
+  const canCreateActivity = canManageEntity({
+    role: profile?.role,
+    entity: "activities",
+    action: "create",
+  });
+  const canCreateContact = canManageEntity({
+    role: profile?.role,
+    entity: "contacts",
+    action: "create",
+  });
   const isMobile = useIsMobile();
   const contacts = useContacts();
   const leads = useLeads();
@@ -200,6 +211,10 @@ export function LogActivityFab({
   }, [contacts.items, contactSearch]);
 
   async function createQuickContactFromSearch() {
+    if (!canCreateContact) {
+      toast.error("You do not have permission to add contacts");
+      return;
+    }
     const raw = contactSearch.trim();
     if (!raw || !profile?.uid) return;
     const [firstName, ...rest] = raw.split(/\s+/);
@@ -241,6 +256,10 @@ export function LogActivityFab({
     }
     if (!profile) {
       toast.error("You must be logged in");
+      return;
+    }
+    if (!canCreateActivity) {
+      toast.error("You do not have permission to add activities");
       return;
     }
     if (submitting) return;
@@ -426,6 +445,7 @@ export function LogActivityFab({
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && showContactResults && filteredContacts.length === 0) {
+                  if (!canCreateContact) return;
                   e.preventDefault();
                   void createQuickContactFromSearch();
                 }
@@ -465,6 +485,7 @@ export function LogActivityFab({
                   <button
                     type="button"
                     onClick={() => void createQuickContactFromSearch()}
+                    disabled={!canCreateContact}
                     className="w-full px-3 py-2.5 text-left text-sm text-primary hover:bg-muted"
                   >
                     Create contact: {contactSearch.trim()}
@@ -498,7 +519,7 @@ export function LogActivityFab({
           <div className="text-xs text-muted-foreground">Cmd+Enter to save</div>
           <Button
             type="button"
-            disabled={submitting}
+            disabled={submitting || !canCreateActivity}
             onClick={() => void handleSubmit()}
             className="bg-primary text-white rounded-full px-5 py-2 hover:bg-primary/90"
           >

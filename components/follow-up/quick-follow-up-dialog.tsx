@@ -21,6 +21,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { canManageEntity } from "@/lib/permissions";
+import type { UserRole } from "@/lib/types";
 
 const SNOOZE_OPTIONS = [
   { label: "Tomorrow", days: 1 },
@@ -43,12 +45,18 @@ export function QuickFollowUpDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   item: FollowUpItem | null;
-  userProfile: { uid: string; displayName?: string } | null;
+  userProfile: { uid: string; displayName?: string; role?: UserRole | null } | null;
   onBeforeSubmit?: (item: FollowUpItem) => void;
   onErrorRevert?: (item: FollowUpItem) => void;
   onSuccess?: (item: FollowUpItem) => void;
 }) {
   const [submitting, setSubmitting] = React.useState(false);
+  const canCreateActivity = canManageEntity({
+    role: userProfile?.role,
+    entity: "activities",
+    action: "create",
+  });
+
   const [activityType, setActivityType] = React.useState<ActivityChoice>("Follow Up");
   const [notes, setNotes] = React.useState("");
   const [snoozeDays, setSnoozeDays] = React.useState<number | null>(null);
@@ -89,6 +97,10 @@ export function QuickFollowUpDialog({
 
   async function onSubmit() {
     if (!item || !userProfile?.uid) return;
+    if (!canCreateActivity) {
+      toast.error("You do not have permission to add activities");
+      return;
+    }
     onBeforeSubmit?.(item);
     setSubmitting(true);
     try {
@@ -198,7 +210,7 @@ export function QuickFollowUpDialog({
             >
               Cancel
             </Button>
-            <Button onClick={() => void onSubmit()} disabled={submitting}>
+            <Button onClick={() => void onSubmit()} disabled={submitting || !canCreateActivity}>
               {submitting ? "Saving..." : "Log & Done"}
             </Button>
           </div>

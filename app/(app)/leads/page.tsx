@@ -697,7 +697,11 @@ export default function LeadsPage() {
         open={showQuickLog}
         onOpenChange={setShowQuickLog}
         item={quickFollowUpItem}
-        userProfile={profile ? { uid: profile.uid, displayName: profile.displayName } : null}
+        userProfile={
+          profile
+            ? { uid: profile.uid, displayName: profile.displayName, role: profile.role }
+            : null
+        }
       />
     </div>
   );

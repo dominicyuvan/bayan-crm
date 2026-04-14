@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   Timestamp,
   collection,
+  deleteDoc,
   doc,
   limit,
   onSnapshot,
@@ -35,6 +36,7 @@ import {
   Users,
 } from "lucide-react";
 import { AddLeadModal } from "@/components/leads/add-lead-modal";
+import { canManageEntity, getRecordOwnerUid } from "@/lib/permissions";
 
 export function ContactDetailDrawer({
   contact,
@@ -66,6 +68,8 @@ export function ContactDetailDrawer({
   const [activityItems, setActivityItems] = React.useState<
     Array<Activity & { id: string }>
   >([]);
+  const [deletingContact, setDeletingContact] = React.useState(false);
+  const [deletingActivityId, setDeletingActivityId] = React.useState<string | null>(null);
 
   function truncateText(text: string, max = 60) {
     const t = (text ?? "").trim();
@@ -208,6 +212,65 @@ export function ContactDetailDrawer({
     }
   }
 
+  const canDeleteContact = canManageEntity({
+    role: profile?.role,
+    entity: "contacts",
+    action: "delete",
+    ownerUid: getRecordOwnerUid(contact ?? {}),
+    profileUid: profile?.uid,
+  });
+
+  async function onDeleteContact() {
+    if (!contact?.id) return;
+    if (!canDeleteContact) {
+      toast.error("You can only delete contacts you created");
+      return;
+    }
+    if (linkedLeads.length > 0) {
+      toast.error("Delete linked leads first before deleting this contact");
+      return;
+    }
+    const ok = window.confirm(`Delete ${name || "this contact"}? This cannot be undone.`);
+    if (!ok) return;
+
+    setDeletingContact(true);
+    try {
+      await deleteDoc(doc(db, "contacts", contact.id));
+      toast.success("Contact deleted");
+      onOpenChange(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeletingContact(false);
+    }
+  }
+
+  async function onDeleteActivity(activity: Activity & { id: string }) {
+    const canDeleteActivity = canManageEntity({
+      role: profile?.role,
+      entity: "activities",
+      action: "delete",
+      ownerUid: getRecordOwnerUid(activity),
+      profileUid: profile?.uid,
+    });
+    if (!canDeleteActivity) {
+      toast.error("You can only delete activities you created");
+      return;
+    }
+    const ok = window.confirm("Delete this activity?");
+    if (!ok) return;
+
+    setDeletingActivityId(activity.id);
+    try {
+      await deleteDoc(doc(db, "activities", activity.id));
+      toast.success("Activity deleted");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeletingActivityId(null);
+    }
+  }
+
   const name =
     contact ? `${contact.firstName ?? ""} ${contact.lastName ?? ""}`.trim() : "";
 
@@ -258,6 +321,13 @@ export function ContactDetailDrawer({
             <div className="flex flex-wrap gap-2">
               <Button onClick={onSaveInline} disabled={saving}>
                 Save changes
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => void onDeleteContact()}
+                disabled={!canDeleteContact || deletingContact}
+              >
+                {deletingContact ? "Deleting..." : "Delete contact"}
               </Button>
               <Button
                 variant="outline"
@@ -329,6 +399,23 @@ export function ContactDetailDrawer({
                                 {truncateText(notes)}
                               </p>
                             </div>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => void onDeleteActivity(a)}
+                              disabled={
+                                deletingActivityId === a.id ||
+                                !canManageEntity({
+                                  role: profile?.role,
+                                  entity: "activities",
+                                  action: "delete",
+                                  ownerUid: getRecordOwnerUid(a),
+                                  profileUid: profile?.uid,
+                                })
+                              }
+                            >
+                              {deletingActivityId === a.id ? "..." : "Delete"}
+                            </Button>
                             <div
                               className={`h-2 w-2 rounded-full mt-2 ${outcomeColor}`}
                             />

@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { X } from "lucide-react";
 import { SOURCE_OPTIONS } from "@/lib/constants";
+import { canManageEntity } from "@/lib/permissions";
 
 const PROPERTY_TYPES = ["Office", "Retail", "Warehouse", "Industrial", "Mixed", "Other"];
 export type AddLeadModalProps = {
@@ -29,6 +30,11 @@ export function AddLeadModal({
   onExternalOpenChange,
 }: AddLeadModalProps) {
   const { profile } = useAuth();
+  const canCreateLead = canManageEntity({
+    role: profile?.role,
+    entity: "leads",
+    action: "create",
+  });
   const contacts = useContacts();
   const status: LeadStatus = "Initial Contact";
 
@@ -95,6 +101,11 @@ export function AddLeadModal({
   }
 
   async function onSave() {
+    if (!canCreateLead) {
+      toast.error("You do not have permission to add leads");
+      return;
+    }
+
     if (!contactId) {
       toast.error("Contact is required");
       return;
@@ -149,7 +160,7 @@ export function AddLeadModal({
     >
       {!isControlled && (
         <DialogTrigger asChild>
-          <Button>Add Lead</Button>
+          <Button disabled={!canCreateLead}>Add Lead</Button>
         </DialogTrigger>
       )}
       <DialogContent className="sm:max-w-2xl">

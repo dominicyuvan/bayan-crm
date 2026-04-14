@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   Timestamp,
   collection,
+  deleteDoc,
   doc,
   limit,
   onSnapshot,
@@ -36,6 +37,7 @@ import {
   Phone,
   Users,
 } from "lucide-react";
+import { canManageEntity, getRecordOwnerUid } from "@/lib/permissions";
 
 const STATUSES: LeadStatus[] = [
   "Initial Contact",
@@ -95,6 +97,8 @@ export function LeadDetailDrawer({
   const [status, setStatus] = React.useState<LeadStatus>("Initial Contact");
 
   const [scheduleOpen, setScheduleOpen] = React.useState(false);
+  const [deletingLead, setDeletingLead] = React.useState(false);
+  const [deletingActivityId, setDeletingActivityId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!lead) return;
@@ -294,6 +298,61 @@ export function LeadDetailDrawer({
     }
   }
 
+  const canDeleteLead = canManageEntity({
+    role: profile?.role,
+    entity: "leads",
+    action: "delete",
+    ownerUid: getRecordOwnerUid(lead ?? {}),
+    profileUid: profile?.uid,
+  });
+
+  async function onDeleteLead() {
+    if (!lead?.id) return;
+    if (!canDeleteLead) {
+      toast.error("You can only delete leads you created");
+      return;
+    }
+    const ok = window.confirm("Delete this lead? This cannot be undone.");
+    if (!ok) return;
+
+    setDeletingLead(true);
+    try {
+      await deleteDoc(doc(db, "leads", lead.id));
+      toast.success("Lead deleted");
+      onOpenChange(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeletingLead(false);
+    }
+  }
+
+  async function onDeleteActivity(activity: Activity & { id: string }) {
+    const canDeleteActivity = canManageEntity({
+      role: profile?.role,
+      entity: "activities",
+      action: "delete",
+      ownerUid: getRecordOwnerUid(activity),
+      profileUid: profile?.uid,
+    });
+    if (!canDeleteActivity) {
+      toast.error("You can only delete activities you created");
+      return;
+    }
+    const ok = window.confirm("Delete this activity?");
+    if (!ok) return;
+
+    setDeletingActivityId(activity.id);
+    try {
+      await deleteDoc(doc(db, "activities", activity.id));
+      toast.success("Activity deleted");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeletingActivityId(null);
+    }
+  }
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="sm:max-w-xl">
@@ -463,6 +522,13 @@ export function LeadDetailDrawer({
               <Button onClick={onSave} disabled={saving}>
                 Save changes
               </Button>
+              <Button
+                variant="destructive"
+                onClick={() => void onDeleteLead()}
+                disabled={!canDeleteLead || deletingLead}
+              >
+                {deletingLead ? "Deleting..." : "Delete lead"}
+              </Button>
             </div>
 
             <div className="space-y-2">
@@ -515,6 +581,23 @@ export function LeadDetailDrawer({
                             {truncateText(notes)}
                           </p>
                         </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => void onDeleteActivity(a)}
+                          disabled={
+                            deletingActivityId === a.id ||
+                            !canManageEntity({
+                              role: profile?.role,
+                              entity: "activities",
+                              action: "delete",
+                              ownerUid: getRecordOwnerUid(a),
+                              profileUid: profile?.uid,
+                            })
+                          }
+                        >
+                          {deletingActivityId === a.id ? "..." : "Delete"}
+                        </Button>
                         <div
                           className={`h-2 w-2 rounded-full mt-2 ${outcomeColor}`}
                         />
