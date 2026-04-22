@@ -12,6 +12,7 @@ export type ActivityDoc = WithId<Activity>;
 export type TaskDoc = WithId<Task>;
 export type ContractDoc = WithId<Contract>;
 export type TeamMemberDoc = WithId<TeamMember>;
+export type CadenceTemplateDoc = WithId<CadenceTemplate>;
 
 export interface UserProfile {
   id?: string;
@@ -74,6 +75,8 @@ export interface Lead {
   // Owner (who created the record)
   assignedTo?: string;
   assignedToUid?: string;
+  cadenceId?: string;
+  cadenceStepIndex?: number | null;
   notes?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -180,5 +183,23 @@ export interface TeamMember {
   updatedAt?: Timestamp;
 
   isActive?: boolean;
+}
+
+export interface CadenceStep {
+  id?: string;
+  dayOffset: number;
+  type: ActivityType | "task";
+  title: string;
+  notes?: string;
+}
+
+export interface CadenceTemplate {
+  id?: string;
+  name: string;
+  description?: string;
+  durationDays: number;
+  steps: CadenceStep[];
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 

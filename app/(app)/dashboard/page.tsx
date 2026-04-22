@@ -170,6 +170,9 @@ export default function DashboardPage() {
   const activities = useActivities();
   const tasks = useTasks();
 
+  const role = profile?.role ?? "agent";
+  const isAgent = role === "agent";
+
   const loading = contacts.loading || leads.loading || activities.loading || tasks.loading;
 
   const todayStart = React.useMemo(() => startOfDay(new Date()), []);
@@ -193,9 +196,9 @@ export default function DashboardPage() {
   const overdue = React.useMemo(
     () =>
       tasks.items.filter(
-        (t) => t.isOverdue && t.assignedToId === profile?.uid
+        (t) => t.isOverdue && (!isAgent || t.assignedToId === profile?.uid)
       ),
-    [tasks.items, profile?.uid]
+    [tasks.items, isAgent, profile?.uid]
   );
 
   const userFirstName = profile?.firstName || profile?.displayName?.split(" ")[0] || "Bayan";
@@ -234,13 +237,13 @@ export default function DashboardPage() {
     const visibleLeads = leads.items.filter(
       (l) => {
         const ownerUid = l.assignedToUid ?? l.assignedRepId ?? "";
-        return ownerUid === profile?.uid;
+        return !isAgent || ownerUid === profile?.uid;
       }
     );
     const todayActivities = activities.items.filter((a) => {
       if (!profile?.uid) return false;
       const createdBy = (a as unknown as { createdBy?: string }).createdBy ?? a.repId;
-      if (createdBy !== profile.uid) return false;
+      if (isAgent && createdBy !== profile.uid) return false;
       const d = tsToDate(a.createdAt);
       return !!d && d >= todayStart;
     });
@@ -283,7 +286,7 @@ export default function DashboardPage() {
       pipelineValue,
       todayActivities,
     };
-  }, [activities.items, leads.items, tasks.items, todayStart, profile?.uid]);
+  }, [activities.items, leads.items, tasks.items, todayStart, isAgent, profile?.uid]);
 
   const dealsWon = React.useMemo(() => {
     const thisMonthStart = new Date();
@@ -292,8 +295,7 @@ export default function DashboardPage() {
 
     return leads.items.filter((l) => {
       if (l.status.toLowerCase() !== "won") return false;
-      const ownerUid = l.assignedToUid ?? l.assignedRepId ?? "";
-      if (ownerUid !== profile?.uid) return false;
+      if (profile?.role === "agent" && l.assignedToUid !== profile.uid) return false;
       const closedDate =
         tsToDate(l.closedAt) ??
         tsToDate((l as unknown as { closedAt?: typeof l.updatedAt }).closedAt) ??

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 
-const AGENT_BLOCKED_PREFIXES = ["/team", "/reports", "/integrations"];
+const AGENT_BLOCKED_PREFIXES = ["/team", "/reports", "/integrations", "/cadences"];
 const MANAGER_BLOCKED_PREFIXES = ["/integrations"];
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
