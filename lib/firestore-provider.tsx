@@ -5,7 +5,6 @@ import { onSnapshot, orderBy, query } from "firebase/firestore";
 import { isBefore } from "date-fns";
 import type {
   Activity,
-  CadenceTemplate,
   Contact,
   Contract,
   Lead,
@@ -15,7 +14,6 @@ import type {
 } from "@/lib/types";
 import {
   activitiesCol,
-  cadencesCol,
   contactsCol,
   contractsCol,
   leadsCol,
@@ -81,7 +79,6 @@ type FirestoreContextValue = {
   tasks: { items: TaskComputed[]; loading: boolean; error: string | null };
   contracts: CollectionState<Contract>;
   teamMembers: CollectionState<TeamMember>;
-  cadences: CollectionState<CadenceTemplate>;
 };
 
 const FirestoreContext = React.createContext<FirestoreContextValue | null>(null);
@@ -124,18 +121,21 @@ export function FirestoreProvider({ children }: { children: React.ReactNode }) {
     () => query(teamMembersCol, orderBy("displayName", "asc")),
     []
   );
-  const cadencesQ = React.useMemo(
-    () => query(cadencesCol, orderBy("updatedAt", "desc")),
-    []
-  );
-
   const contacts = useCollection<Contact>(contactsQ);
-  const leads = useCollection<Lead>(leadsQ);
+  const rawLeads = useCollection<Lead>(leadsQ);
   const activities = useCollection<Activity>(activitiesQ);
   const rawTasks = useCollection<Task>(tasksQ);
   const contracts = useCollection<Contract>(contractsQ);
   const teamMembers = useCollection<TeamMember>(teamMembersQ);
-  const cadences = useCollection<CadenceTemplate>(cadencesQ);
+
+  const leads = React.useMemo<CollectionState<Lead>>(() => {
+    const items = rawLeads.items.filter((lead) => {
+      const generatedAt = (lead as Lead & { generatedAt?: unknown }).generatedAt;
+      const source = ((lead.source ?? "") as string).trim().toLowerCase();
+      return !generatedAt && source !== "generated";
+    });
+    return { items, loading: rawLeads.loading, error: rawLeads.error };
+  }, [rawLeads.items, rawLeads.loading, rawLeads.error]);
 
   const tasks = React.useMemo(() => {
     const now = new Date();
@@ -156,9 +156,8 @@ export function FirestoreProvider({ children }: { children: React.ReactNode }) {
       tasks,
       contracts,
       teamMembers,
-      cadences,
     }),
-    [contacts, leads, activities, tasks, contracts, teamMembers, cadences]
+    [contacts, leads, activities, tasks, contracts, teamMembers]
   );
 
   return (

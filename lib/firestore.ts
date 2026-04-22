@@ -7,7 +7,6 @@ import {
 import { db } from "@/lib/firebase";
 import type {
   Activity,
-  CadenceTemplate,
   Contact,
   Contract,
   Lead,
@@ -27,7 +26,6 @@ export const leadsCol = typedCollection<Lead>("leads");
 export const activitiesCol = typedCollection<Activity>("activities");
 export const tasksCol = typedCollection<Task>("tasks");
 export const contractsCol = typedCollection<Contract>("contracts");
-export const cadencesCol = typedCollection<CadenceTemplate>("cadences");
 export const teamMembersCol = typedCollection<TeamMember>("team_members");
 
 export function tsToDate(ts?: Timestamp | null) {

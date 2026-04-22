@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
+import { doc, writeBatch } from "firebase/firestore";
 import { useAuth } from "@/lib/auth-context";
 import { useActivities, useContacts } from "@/lib/firestore-provider";
+import { db } from "@/lib/firebase";
 import { tsToDate } from "@/lib/firestore";
 import { cn } from "@/lib/utils";
 import { AddContactModal } from "@/components/contacts/add-contact-modal";
@@ -14,8 +16,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { Phone, MessageCircle, ChevronRight } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, MessageCircle, Phone, Trash2 } from "lucide-react";
 import { SOURCE_OPTIONS } from "@/lib/constants";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
 
 function toWaNumber(value: string) {
   return value.replace(/[^\d]/g, "");
@@ -25,10 +39,16 @@ export default function ContactsPage() {
   const { profile } = useAuth();
   const contacts = useContacts();
   const activities = useActivities();
-  const role = profile?.role ?? "agent";
 
   const [q, setQ] = React.useState("");
   const [source, setSource] = React.useState<string>("all");
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
+  const [isDeleting, setIsDeleting] = React.useState(false);
+  const [sortBy, setSortBy] = React.useState<
+    "name" | "company" | "phone" | "source" | "lastContact"
+  >("name");
+  const [sortDir, setSortDir] = React.useState<"asc" | "desc">("asc");
   const isMobile = useIsMobile();
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
@@ -54,12 +74,11 @@ export default function ContactsPage() {
 
   const visibleActivities = React.useMemo(() => {
     if (!profile?.uid) return [];
-    if (role !== "agent") return activities.items;
     return activities.items.filter((a) => {
       const createdBy = (a.createdBy ?? a.repId ?? "") as string;
       return createdBy === profile.uid;
     });
-  }, [activities.items, role, profile?.uid]);
+  }, [activities.items, profile?.uid]);
 
   const activityCountsByContactId = React.useMemo(() => {
     const map = new Map<string, number>();
@@ -69,6 +88,88 @@ export default function ContactsPage() {
     }
     return map;
   }, [visibleActivities]);
+
+  const sortedContacts = React.useMemo(() => {
+    const sorted = [...filtered].sort((a, b) => {
+      const aName = `${a.firstName ?? ""} ${a.lastName ?? ""}`.trim().toLowerCase();
+      const bName = `${b.firstName ?? ""} ${b.lastName ?? ""}`.trim().toLowerCase();
+      const aCompany = (a.company ?? "").toLowerCase();
+      const bCompany = (b.company ?? "").toLowerCase();
+      const aPhone = (a.phone ?? "").toLowerCase();
+      const bPhone = (b.phone ?? "").toLowerCase();
+      const aSource = (a.source ?? "").toLowerCase();
+      const bSource = (b.source ?? "").toLowerCase();
+      const aLast = tsToDate(a.lastContactAt)?.getTime() ?? 0;
+      const bLast = tsToDate(b.lastContactAt)?.getTime() ?? 0;
+
+      let cmp = 0;
+      if (sortBy === "name") cmp = aName.localeCompare(bName);
+      if (sortBy === "company") cmp = aCompany.localeCompare(bCompany);
+      if (sortBy === "phone") cmp = aPhone.localeCompare(bPhone);
+      if (sortBy === "source") cmp = aSource.localeCompare(bSource);
+      if (sortBy === "lastContact") cmp = aLast - bLast;
+
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return sorted;
+  }, [filtered, sortBy, sortDir]);
+
+  const selectedCount = selectedIds.size;
+  const allVisibleSelected =
+    sortedContacts.length > 0 && sortedContacts.every((c) => c.id && selectedIds.has(c.id));
+
+  React.useEffect(() => {
+    const visibleIds = new Set(sortedContacts.map((c) => c.id).filter(Boolean) as string[]);
+    setSelectedIds((prev) => {
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (visibleIds.has(id)) next.add(id);
+      });
+      return next.size === prev.size ? prev : next;
+    });
+  }, [sortedContacts]);
+
+  function toggleSort(next: "name" | "company" | "phone" | "source" | "lastContact") {
+    if (sortBy === next) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortBy(next);
+    setSortDir("asc");
+  }
+
+  function renderSortIcon(column: "name" | "company" | "phone" | "source" | "lastContact") {
+    if (sortBy !== column) return <ArrowUpDown className="h-3.5 w-3.5" />;
+    return sortDir === "asc" ? (
+      <ArrowUp className="h-3.5 w-3.5" />
+    ) : (
+      <ArrowDown className="h-3.5 w-3.5" />
+    );
+  }
+
+  async function handleBulkDeleteSelected() {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    setIsDeleting(true);
+    try {
+      const batchSize = 450;
+      for (let i = 0; i < ids.length; i += batchSize) {
+        const chunk = ids.slice(i, i + batchSize);
+        const batch = writeBatch(db);
+        chunk.forEach((id) => {
+          batch.delete(doc(db, "contacts", id));
+        });
+        await batch.commit();
+      }
+      setSelectedIds(new Set());
+      setDeleteDialogOpen(false);
+      toast.success(`${ids.length} contact${ids.length === 1 ? "" : "s"} deleted`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete contacts");
+    } finally {
+      setIsDeleting(false);
+    }
+  }
 
   function MobileContactCard({
     contact,
@@ -172,14 +273,14 @@ export default function ContactsPage() {
         </div>
       ) : isMobile ? (
         <div className="grid gap-3">
-          {filtered.map((c) => (
+          {sortedContacts.map((c) => (
             <MobileContactCard
               key={c.id}
               contact={c}
               onClick={(contact) => setSelectedId(contact.id)}
             />
           ))}
-          {filtered.length === 0 && (
+          {sortedContacts.length === 0 && (
             <div className="rounded-xl border bg-card p-6 text-center text-sm text-muted-foreground">
               No contacts found.
             </div>
@@ -187,27 +288,125 @@ export default function ContactsPage() {
         </div>
       ) : (
         <>
+          {selectedCount > 0 && (
+            <div className="mx-3 mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+              <span className="text-sm font-medium">
+                {selectedCount} contact{selectedCount === 1 ? "" : "s"} selected
+              </span>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+                  Clear selection
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => setDeleteDialogOpen(true)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete selected
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Desktop table */}
           <div className="hidden rounded-xl border bg-card sm:block">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Company</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Source</TableHead>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={allVisibleSelected}
+                      onCheckedChange={(checked) => {
+                        if (!checked) {
+                          setSelectedIds(new Set());
+                          return;
+                        }
+                        const allIds = sortedContacts
+                          .map((c) => c.id)
+                          .filter(Boolean) as string[];
+                        setSelectedIds(new Set(allIds));
+                      }}
+                      aria-label="Select all contacts"
+                    />
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 font-medium"
+                      onClick={() => toggleSort("name")}
+                    >
+                      Name
+                      {renderSortIcon("name")}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 font-medium"
+                      onClick={() => toggleSort("company")}
+                    >
+                      Company
+                      {renderSortIcon("company")}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 font-medium"
+                      onClick={() => toggleSort("phone")}
+                    >
+                      Phone
+                      {renderSortIcon("phone")}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 font-medium"
+                      onClick={() => toggleSort("source")}
+                    >
+                      Source
+                      {renderSortIcon("source")}
+                    </button>
+                  </TableHead>
                   <TableHead>Tags</TableHead>
-                  <TableHead>Last Contact</TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 font-medium"
+                      onClick={() => toggleSort("lastContact")}
+                    >
+                      Last Contact
+                      {renderSortIcon("lastContact")}
+                    </button>
+                  </TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((c) => (
+                {sortedContacts.map((c) => (
                   <TableRow
                     key={c.id}
                     className="cursor-pointer"
                     onClick={() => setSelectedId(c.id)}
                   >
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={!!c.id && selectedIds.has(c.id)}
+                        onCheckedChange={(checked) => {
+                          if (!c.id) return;
+                          setSelectedIds((prev) => {
+                            const next = new Set(prev);
+                            if (checked) next.add(c.id);
+                            else next.delete(c.id);
+                            return next;
+                          });
+                        }}
+                        aria-label={`Select contact ${c.firstName} ${c.lastName}`}
+                      />
+                    </TableCell>
                     <TableCell className="font-medium">
                       <div className="flex items-center justify-between gap-3">
                         <span className="min-w-0 truncate">
@@ -278,9 +477,9 @@ export default function ContactsPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {filtered.length === 0 && (
+                {sortedContacts.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">
                       No contacts found.
                     </TableCell>
                   </TableRow>
@@ -291,7 +490,7 @@ export default function ContactsPage() {
 
           {/* Mobile cards */}
           <div className="grid gap-3 sm:hidden">
-            {filtered.map((c) => (
+            {sortedContacts.map((c) => (
               <button
                 key={c.id}
                 className={cn("rounded-xl border bg-card p-4 text-left")}
@@ -308,7 +507,7 @@ export default function ContactsPage() {
                 </div>
               </button>
             ))}
-            {filtered.length === 0 && (
+            {sortedContacts.length === 0 && (
               <div className="rounded-xl border bg-card p-6 text-center text-sm text-muted-foreground">
                 No contacts found.
               </div>
@@ -316,6 +515,31 @@ export default function ContactsPage() {
           </div>
         </>
       )}
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete selected contacts?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete {selectedCount} selected contact
+              {selectedCount === 1 ? "" : "s"}. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={isDeleting}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleBulkDeleteSelected();
+              }}
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AddLeadModal
         preselectedContactId={preselectedContactId}

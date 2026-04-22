@@ -30,12 +30,6 @@ const navItems: NavItem[] = [
   { href: "/contacts", name: "Contacts", icon: Building2Icon },
   { href: "/leads", name: "Leads", icon: WorkflowIcon },
   { href: "/tasks", name: "Tasks", icon: CalendarClockIcon },
-  {
-    href: "/cadences",
-    name: "Cadences",
-    icon: Settings2Icon,
-    managerOnly: true,
-  },
   { href: "/team", name: "Team", icon: UsersRound, roles: ["admin", "manager"] },
   {
     href: "/reports",

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { doc, serverTimestamp, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";
 import { useContacts, useLeads, useTeamMembers } from "@/lib/firestore-provider";
@@ -23,12 +23,23 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ChevronRight, RefreshCw } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { tsToDate } from "@/lib/firestore";
 import type { FollowUpItem } from "@/lib/follow-up-engine";
 import { QuickFollowUpDialog } from "@/components/follow-up/quick-follow-up-dialog";
 import { SOURCE_OPTIONS } from "@/lib/constants";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const STATUSES: Array<LeadStatus | "all"> = [
   "all",
@@ -105,11 +116,17 @@ export default function LeadsPage() {
   const [temp, setTemp] = React.useState<typeof TEMPS[number]>("all");
   const [source, setSource] = React.useState<string>("all");
   const [rep, setRep] = React.useState<string>("all");
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
+  const [isDeleting, setIsDeleting] = React.useState(false);
+  const [sortBy, setSortBy] = React.useState<
+    "contact" | "propertyType" | "location" | "value" | "status"
+  >("contact");
+  const [sortDir, setSortDir] = React.useState<"asc" | "desc">("asc");
   const isMobile = useIsMobile();
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [mobileStatusLeadId, setMobileStatusLeadId] = React.useState<string | null>(null);
-  const [bannerDismissed, setBannerDismissed] = React.useState(false);
   const [quickFollowUpItem, setQuickFollowUpItem] = React.useState<FollowUpItem | null>(null);
   const [showQuickLog, setShowQuickLog] = React.useState(false);
   const selected = React.useMemo(
@@ -207,19 +224,97 @@ export default function LeadsPage() {
     });
   }, [leads.items, contacts.items, q, status, temp, source, rep, role, profile?.uid]);
 
-  const generatedUncontactedCount = React.useMemo(() => {
-    return filtered.filter((l: any) => l.generatedAt && !getLeadLastContactDate(l)).length;
-  }, [filtered]);
+  const sortedLeads = React.useMemo(() => {
+    const getContactName = (lead: (typeof leads.items)[number]) => {
+      const c = contacts.items.find((cc) => cc.id === lead.contactId);
+      return c ? `${c.firstName} ${c.lastName}`.trim() : "";
+    };
+
+    const sorted = [...filtered].sort((a, b) => {
+      const aContact = getContactName(a).toLowerCase();
+      const bContact = getContactName(b).toLowerCase();
+      const aProperty = (a.propertyType ?? "").toLowerCase();
+      const bProperty = (b.propertyType ?? "").toLowerCase();
+      const aLocation = (a.location ?? "").toLowerCase();
+      const bLocation = (b.location ?? "").toLowerCase();
+      const aStatus = (a.status ?? "").toLowerCase();
+      const bStatus = (b.status ?? "").toLowerCase();
+      const aValue = a.valueOmr ?? a.value ?? 0;
+      const bValue = b.valueOmr ?? b.value ?? 0;
+
+      let cmp = 0;
+      if (sortBy === "contact") cmp = aContact.localeCompare(bContact);
+      if (sortBy === "propertyType") cmp = aProperty.localeCompare(bProperty);
+      if (sortBy === "location") cmp = aLocation.localeCompare(bLocation);
+      if (sortBy === "status") cmp = aStatus.localeCompare(bStatus);
+      if (sortBy === "value") cmp = aValue - bValue;
+
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+
+    return sorted;
+  }, [filtered, sortBy, sortDir, contacts.items, leads.items]);
+
+  const selectedCount = selectedIds.size;
+  const allVisibleSelected =
+    sortedLeads.length > 0 && sortedLeads.every((l) => l.id && selectedIds.has(l.id));
 
   React.useEffect(() => {
-    try {
-      setBannerDismissed(
-        window.sessionStorage.getItem("bayan_generated_banner_dismissed") === "true"
-      );
-    } catch {
-      // ignore
+    // Keep selection aligned to currently visible rows.
+    const visibleIds = new Set(sortedLeads.map((l) => l.id).filter(Boolean) as string[]);
+    setSelectedIds((prev) => {
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (visibleIds.has(id)) next.add(id);
+      });
+      return next.size === prev.size ? prev : next;
+    });
+  }, [sortedLeads]);
+
+  function toggleSort(next: "contact" | "propertyType" | "location" | "value" | "status") {
+    if (sortBy === next) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      return;
     }
-  }, []);
+    setSortBy(next);
+    setSortDir("asc");
+  }
+
+  function renderSortIcon(column: "contact" | "propertyType" | "location" | "value" | "status") {
+    if (sortBy !== column) return <ArrowUpDown className="h-3.5 w-3.5" />;
+    return sortDir === "asc" ? (
+      <ArrowUp className="h-3.5 w-3.5" />
+    ) : (
+      <ArrowDown className="h-3.5 w-3.5" />
+    );
+  }
+
+  async function handleBulkDeleteSelected() {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+
+    setIsDeleting(true);
+    try {
+      const batchSize = 450;
+      for (let i = 0; i < ids.length; i += batchSize) {
+        const chunk = ids.slice(i, i + batchSize);
+        const batch = writeBatch(db);
+        chunk.forEach((id) => {
+          batch.delete(doc(db, "leads", id));
+        });
+        await batch.commit();
+      }
+
+      setSelectedIds(new Set());
+      setDeleteDialogOpen(false);
+      toast.success(`${ids.length} lead${ids.length === 1 ? "" : "s"} deleted`);
+    } catch (err) {
+      console.error("Bulk delete leads failed:", err);
+      toast.error("Failed to delete selected leads");
+    } finally {
+      setIsDeleting(false);
+    }
+  }
 
   function MobileLeadCard({
     lead,
@@ -260,14 +355,6 @@ export default function LeadsPage() {
                 <p className="text-sm font-semibold">
                   {contact ? `${contact.firstName} ${contact.lastName}` : "Lead"}
                 </p>
-                {(lead as any).generatedAt ? (
-                  <Badge
-                    variant="outline"
-                    className="border-purple-200 bg-purple-50 text-[10px] text-purple-600"
-                  >
-                    ✨ Generated
-                  </Badge>
-                ) : null}
               </div>
               <p className="text-xs text-muted-foreground">
                 {lead.propertyType ?? "Lead"} · {lead.location ?? "—"}
@@ -328,37 +415,62 @@ export default function LeadsPage() {
 
   return (
     <div className="space-y-4">
-      {!bannerDismissed && generatedUncontactedCount > 0 && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <div className="text-sm text-amber-800">
-            You have {generatedUncontactedCount} new generated leads waiting — start reaching out!
-          </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              setBannerDismissed(true);
-              try {
-                window.sessionStorage.setItem("bayan_generated_banner_dismissed", "true");
-              } catch {
-                // ignore
-              }
-            }}
-          >
-            Dismiss
-          </Button>
-        </div>
-      )}
-
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="text-lg font-semibold tracking-tight">Leads</div>
           <div className="text-sm text-muted-foreground">
-            Track pipeline, cadences, and outcomes.
+            Track pipeline and outcomes.
           </div>
         </div>
         <AddLeadModal />
       </div>
+
+      {selectedCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+          <span className="text-sm font-medium">
+            {selectedCount} lead{selectedCount === 1 ? "" : "s"} selected
+          </span>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+              Clear selection
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setDeleteDialogOpen(true)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete selected
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete selected leads?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete {selectedCount} selected lead
+              {selectedCount === 1 ? "" : "s"}. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={isDeleting}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleBulkDeleteSelected();
+              }}
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <Input
@@ -456,14 +568,14 @@ export default function LeadsPage() {
         </div>
       ) : isMobile ? (
         <div className="grid gap-3">
-          {filtered.map((l) => (
+          {sortedLeads.map((l) => (
             <MobileLeadCard
               key={l.id}
               lead={l}
               onClick={(lead) => setSelectedId(lead.id)}
             />
           ))}
-          {filtered.length === 0 && (
+          {sortedLeads.length === 0 && (
             <div className="rounded-xl border bg-card p-6 text-center text-sm text-muted-foreground">
               No leads found.
             </div>
@@ -475,16 +587,77 @@ export default function LeadsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Property Type</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Value</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={allVisibleSelected}
+                      onCheckedChange={(checked) => {
+                        if (!checked) {
+                          setSelectedIds(new Set());
+                          return;
+                        }
+                        const allIds = sortedLeads
+                          .map((l) => l.id)
+                          .filter(Boolean) as string[];
+                        setSelectedIds(new Set(allIds));
+                      }}
+                      aria-label="Select all leads"
+                    />
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 font-medium"
+                      onClick={() => toggleSort("contact")}
+                    >
+                      Contact
+                      {renderSortIcon("contact")}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 font-medium"
+                      onClick={() => toggleSort("propertyType")}
+                    >
+                      Property Type
+                      {renderSortIcon("propertyType")}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 font-medium"
+                      onClick={() => toggleSort("location")}
+                    >
+                      Location
+                      {renderSortIcon("location")}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 font-medium"
+                      onClick={() => toggleSort("value")}
+                    >
+                      Value
+                      {renderSortIcon("value")}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 font-medium"
+                      onClick={() => toggleSort("status")}
+                    >
+                      Status
+                      {renderSortIcon("status")}
+                    </button>
+                  </TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((l) => {
+                {sortedLeads.map((l) => {
                   const c = contacts.items.find((cc) => cc.id === l.contactId);
                   return (
                     <TableRow
@@ -492,17 +665,24 @@ export default function LeadsPage() {
                       className="cursor-pointer"
                       onClick={() => setSelectedId(l.id)}
                     >
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={!!l.id && selectedIds.has(l.id)}
+                          onCheckedChange={(checked) => {
+                            if (!l.id) return;
+                            setSelectedIds((prev) => {
+                              const next = new Set(prev);
+                              if (checked) next.add(l.id);
+                              else next.delete(l.id);
+                              return next;
+                            });
+                          }}
+                          aria-label={`Select lead ${c ? `${c.firstName} ${c.lastName}` : l.id}`}
+                        />
+                      </TableCell>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           <span>{c ? `${c.firstName} ${c.lastName}` : "—"}</span>
-                          {(l as any).generatedAt ? (
-                            <Badge
-                              variant="outline"
-                              className="border-purple-200 bg-purple-50 text-[10px] text-purple-600"
-                            >
-                              ✨ Generated
-                            </Badge>
-                          ) : null}
                         </div>
                       </TableCell>
                       <TableCell>{l.propertyType ?? "—"}</TableCell>
@@ -576,9 +756,9 @@ export default function LeadsPage() {
                     </TableRow>
                   );
                 })}
-                {filtered.length === 0 && (
+                {sortedLeads.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
                       No leads found.
                     </TableCell>
                   </TableRow>
@@ -588,7 +768,7 @@ export default function LeadsPage() {
           </div>
 
           <div className="grid gap-3 sm:hidden">
-            {filtered.map((l) => {
+            {sortedLeads.map((l) => {
               const c = contacts.items.find((cc) => cc.id === l.contactId);
               return (
                 <button
@@ -599,14 +779,6 @@ export default function LeadsPage() {
                   <div className="text-sm font-semibold">
                     <div className="flex items-center gap-2">
                       <span>{c ? `${c.firstName} ${c.lastName}` : "—"}</span>
-                      {(l as any).generatedAt ? (
-                        <Badge
-                          variant="outline"
-                          className="border-purple-200 bg-purple-50 text-[10px] text-purple-600"
-                        >
-                          ✨ Generated
-                        </Badge>
-                      ) : null}
                     </div>
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
@@ -679,7 +851,7 @@ export default function LeadsPage() {
                 </button>
               );
             })}
-            {filtered.length === 0 && (
+            {sortedLeads.length === 0 && (
               <div className="rounded-xl border bg-card p-6 text-center text-sm text-muted-foreground">
                 No leads found.
               </div>

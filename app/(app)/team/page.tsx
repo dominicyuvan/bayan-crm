@@ -3,7 +3,7 @@
 import * as React from "react";
 import { startOfMonth } from "date-fns";
 import { toast } from "sonner";
-import { addDoc, doc, serverTimestamp, updateDoc, type WithFieldValue } from "firebase/firestore";
+import { addDoc, doc, serverTimestamp, updateDoc, writeBatch, type WithFieldValue } from "firebase/firestore";
 import { useAuth } from "@/lib/auth-context";
 import { useFirestore, useLeads, useActivities, useTeamMembers } from "@/lib/firestore-provider";
 import type { TeamMember } from "@/lib/types";
@@ -18,6 +18,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 
 type MemberRoleOption = "admin" | "manager" | "sales_executive";
 
@@ -248,6 +260,20 @@ export default function TeamPage() {
   const role = profile?.role ?? "agent";
   const isAdmin = role === "admin";
   const isManager = role === "manager" || isAdmin;
+  const [selectedMemberIds, setSelectedMemberIds] = React.useState<Set<string>>(new Set());
+  const [bulkDeactivateOpen, setBulkDeactivateOpen] = React.useState(false);
+  const [bulkWorking, setBulkWorking] = React.useState(false);
+  const [memberQuery, setMemberQuery] = React.useState("");
+  const [memberStatusFilter, setMemberStatusFilter] = React.useState<"all" | "active" | "inactive">(
+    "all"
+  );
+  const [memberRoleFilter, setMemberRoleFilter] = React.useState<
+    "all" | "admin" | "manager" | "sales_executive"
+  >("all");
+  const [sortBy, setSortBy] = React.useState<"name" | "email" | "role" | "phone" | "status">(
+    "name"
+  );
+  const [sortDir, setSortDir] = React.useState<"asc" | "desc">("asc");
 
   if (!isManager) {
     return (
@@ -281,6 +307,107 @@ export default function TeamPage() {
       stats: computeStatsForMember(m as TeamMember & { id: string }, leads.items, activities.items),
     }))
     .sort((a, b) => b.stats.wonDeals - a.stats.wonDeals);
+
+  const filteredSortedMembers = React.useMemo(() => {
+    const q = memberQuery.trim().toLowerCase();
+    const list = team.items.filter((m) => {
+      const displayName = (m.displayName ?? m.name ?? "").toLowerCase();
+      const email = (m.email ?? "").toLowerCase();
+      const phone = (m.phone ?? "").toLowerCase();
+      const status = (m.status ?? (m.isActive ? "active" : "inactive")) as
+        | "active"
+        | "inactive";
+      const roleValue = (m.role ?? "").toLowerCase();
+
+      const matchesQ = !q || displayName.includes(q) || email.includes(q) || phone.includes(q);
+      const matchesStatus = memberStatusFilter === "all" || status === memberStatusFilter;
+      const matchesRole = memberRoleFilter === "all" || roleValue === memberRoleFilter;
+      return matchesQ && matchesStatus && matchesRole;
+    });
+
+    return list.sort((a, b) => {
+      const aName = (a.displayName ?? a.name ?? "").toLowerCase();
+      const bName = (b.displayName ?? b.name ?? "").toLowerCase();
+      const aEmail = (a.email ?? "").toLowerCase();
+      const bEmail = (b.email ?? "").toLowerCase();
+      const aRole = (a.role ?? "").toLowerCase();
+      const bRole = (b.role ?? "").toLowerCase();
+      const aPhone = (a.phone ?? "").toLowerCase();
+      const bPhone = (b.phone ?? "").toLowerCase();
+      const aStatus = (a.status ?? (a.isActive ? "active" : "inactive")).toLowerCase();
+      const bStatus = (b.status ?? (b.isActive ? "active" : "inactive")).toLowerCase();
+
+      let cmp = 0;
+      if (sortBy === "name") cmp = aName.localeCompare(bName);
+      if (sortBy === "email") cmp = aEmail.localeCompare(bEmail);
+      if (sortBy === "role") cmp = aRole.localeCompare(bRole);
+      if (sortBy === "phone") cmp = aPhone.localeCompare(bPhone);
+      if (sortBy === "status") cmp = aStatus.localeCompare(bStatus);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [team.items, memberQuery, memberStatusFilter, memberRoleFilter, sortBy, sortDir]);
+
+  const selectedCount = selectedMemberIds.size;
+  const allVisibleSelected =
+    filteredSortedMembers.length > 0 &&
+    filteredSortedMembers.every((m) => m.id && selectedMemberIds.has(m.id));
+
+  React.useEffect(() => {
+    const visibleIds = new Set(filteredSortedMembers.map((m) => m.id).filter(Boolean) as string[]);
+    setSelectedMemberIds((prev) => {
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (visibleIds.has(id)) next.add(id);
+      });
+      return next.size === prev.size ? prev : next;
+    });
+  }, [filteredSortedMembers]);
+
+  function toggleSort(next: "name" | "email" | "role" | "phone" | "status") {
+    if (sortBy === next) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortBy(next);
+    setSortDir("asc");
+  }
+
+  function renderSortIcon(column: "name" | "email" | "role" | "phone" | "status") {
+    if (sortBy !== column) return <ArrowUpDown className="h-3.5 w-3.5" />;
+    return sortDir === "asc" ? (
+      <ArrowUp className="h-3.5 w-3.5" />
+    ) : (
+      <ArrowDown className="h-3.5 w-3.5" />
+    );
+  }
+
+  async function bulkDeactivateSelectedMembers() {
+    const ids = [...selectedMemberIds];
+    if (ids.length === 0) return;
+    setBulkWorking(true);
+    try {
+      const batchSize = 450;
+      for (let i = 0; i < ids.length; i += batchSize) {
+        const chunk = ids.slice(i, i + batchSize);
+        const batch = writeBatch(db);
+        chunk.forEach((id) => {
+          batch.update(doc(db, "team_members", id), {
+            status: "inactive",
+            isActive: false,
+            updatedAt: serverTimestamp(),
+          });
+        });
+        await batch.commit();
+      }
+      setSelectedMemberIds(new Set());
+      setBulkDeactivateOpen(false);
+      toast.success(`${ids.length} team member${ids.length === 1 ? "" : "s"} deactivated`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to deactivate selected members");
+    } finally {
+      setBulkWorking(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -349,21 +476,162 @@ export default function TeamPage() {
               </div>
             </div>
           </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Input
+              value={memberQuery}
+              onChange={(e) => setMemberQuery(e.target.value)}
+              placeholder="Search team members..."
+              className="sm:max-w-sm"
+            />
+            <Select value={memberRoleFilter} onValueChange={(v) => setMemberRoleFilter(v as any)}>
+              <SelectTrigger className="sm:w-44">
+                <SelectValue placeholder="Role" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All roles</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="manager">Manager</SelectItem>
+                <SelectItem value="sales_executive">Sales Executive</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={memberStatusFilter}
+              onValueChange={(v) => setMemberStatusFilter(v as any)}
+            >
+              <SelectTrigger className="sm:w-44">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All status</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="sm:ml-auto">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setMemberQuery("");
+                  setMemberRoleFilter("all");
+                  setMemberStatusFilter("all");
+                }}
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
+
+          {selectedCount > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+              <span className="text-sm font-medium">
+                {selectedCount} member{selectedCount === 1 ? "" : "s"} selected
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedMemberIds(new Set())}
+                >
+                  Clear selection
+                </Button>
+                <Button variant="destructive" size="sm" onClick={() => setBulkDeactivateOpen(true)}>
+                  Deactivate selected
+                </Button>
+              </div>
+            </div>
+          )}
+
           <div className="overflow-x-auto rounded-xl border bg-card">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={allVisibleSelected}
+                      onCheckedChange={(checked) => {
+                        if (!checked) {
+                          setSelectedMemberIds(new Set());
+                          return;
+                        }
+                        const allIds = filteredSortedMembers
+                          .map((m) => m.id)
+                          .filter(Boolean) as string[];
+                        setSelectedMemberIds(new Set(allIds));
+                      }}
+                      aria-label="Select all team members"
+                    />
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 font-medium"
+                      onClick={() => toggleSort("name")}
+                    >
+                      Name
+                      {renderSortIcon("name")}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 font-medium"
+                      onClick={() => toggleSort("email")}
+                    >
+                      Email
+                      {renderSortIcon("email")}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 font-medium"
+                      onClick={() => toggleSort("role")}
+                    >
+                      Role
+                      {renderSortIcon("role")}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 font-medium"
+                      onClick={() => toggleSort("phone")}
+                    >
+                      Phone
+                      {renderSortIcon("phone")}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 font-medium"
+                      onClick={() => toggleSort("status")}
+                    >
+                      Status
+                      {renderSortIcon("status")}
+                    </button>
+                  </TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {team.items.map((m) => (
+                {filteredSortedMembers.map((m) => (
                   <TableRow key={m.id}>
+                    <TableCell>
+                      <Checkbox
+                        checked={!!m.id && selectedMemberIds.has(m.id)}
+                        onCheckedChange={(checked) => {
+                          if (!m.id) return;
+                          setSelectedMemberIds((prev) => {
+                            const next = new Set(prev);
+                            if (checked) next.add(m.id);
+                            else next.delete(m.id);
+                            return next;
+                          });
+                        }}
+                        aria-label={`Select team member ${m.displayName ?? m.email}`}
+                      />
+                    </TableCell>
                     <TableCell className="font-medium">
                       {m.displayName ?? m.email}
                     </TableCell>
@@ -403,10 +671,10 @@ export default function TeamPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {team.items.length === 0 && (
+                {filteredSortedMembers.length === 0 && (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={7}
                       className="py-8 text-center text-sm text-muted-foreground"
                     >
                       No team members yet.
@@ -416,6 +684,31 @@ export default function TeamPage() {
               </TableBody>
             </Table>
           </div>
+
+          <AlertDialog open={bulkDeactivateOpen} onOpenChange={setBulkDeactivateOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Deactivate selected team members?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will set {selectedCount} selected member{selectedCount === 1 ? "" : "s"} to
+                  inactive status.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={bulkWorking}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  variant="destructive"
+                  disabled={bulkWorking}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    void bulkDeactivateSelectedMembers();
+                  }}
+                >
+                  {bulkWorking ? "Deactivating..." : "Deactivate"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       )}
     </div>
