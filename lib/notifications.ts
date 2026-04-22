@@ -5,7 +5,6 @@ export type NotificationType =
   | "overdue_task"
   | "lead_going_cold"
   | "deal_won"
-  | "leads_generated"
   | "never_contacted";
 
 export interface AppNotification {
@@ -23,19 +22,23 @@ export interface AppNotification {
 export function buildNotifications(
   leads: Lead[],
   tasks: Task[],
-  activities: Activity[],
+  _activities: Activity[],
   userId: string,
-  userRole: string
+  _userRole: string
 ): AppNotification[] {
   const notifications: AppNotification[] = [];
   const now = new Date();
+  const currentUserId = (userId || "").trim();
+
+  // Notifications should always be scoped to the signed-in user.
+  if (!currentUserId) return notifications;
 
   // 1. OVERDUE TASKS
   const overdueTasks = tasks.filter((t) => {
     const taskStatus = (t.status || "").toLowerCase();
     if (taskStatus !== "pending" && taskStatus !== "overdue") return false;
     const taskAssignee = t.assignedToUid ?? t.assignedToId ?? "";
-    if (userRole === "agent" && taskAssignee !== userId) return false;
+    if (taskAssignee !== currentUserId) return false;
     const due = tsToDate(t.dueAt);
     return !!due && due < now;
   });
@@ -73,7 +76,8 @@ export function buildNotifications(
     .filter((l) => {
       const normalizedStatus = l.status.toLowerCase();
       if (normalizedStatus === "won" || normalizedStatus === "lost") return false;
-      if (userRole === "agent" && l.assignedToUid !== userId) return false;
+      const leadAssignee = l.assignedToUid ?? l.assignedRepId ?? "";
+      if (leadAssignee !== currentUserId) return false;
       const lastContact = tsToDate(l.lastContactedAt) ?? tsToDate(l.lastContactAt);
       if (!lastContact) return true;
       const days = Math.floor((now.getTime() - lastContact.getTime()) / 86400000);
@@ -106,7 +110,8 @@ export function buildNotifications(
     .filter((l) => {
       const normalizedStatus = l.status.toLowerCase();
       if (normalizedStatus === "won" || normalizedStatus === "lost") return false;
-      if (userRole === "agent" && l.assignedToUid !== userId) return false;
+      const leadAssignee = l.assignedToUid ?? l.assignedRepId ?? "";
+      if (leadAssignee !== currentUserId) return false;
       return !l.lastContactedAt && !l.lastContactAt;
     })
     .slice(0, 3);
@@ -127,36 +132,12 @@ export function buildNotifications(
     });
   });
 
-  // 4. GENERATED LEADS (created in last 24h)
-  const recentGenerated = leads.filter((l) => {
-    if (!l.generatedAt) return false;
-    if (userRole === "agent" && l.assignedToUid !== userId) return false;
-    const generated = tsToDate(l.generatedAt);
-    if (!generated) return false;
-    const hours = (now.getTime() - generated.getTime()) / 3600000;
-    const normalizedStatus = l.status.toLowerCase();
-    const isNew = normalizedStatus === "new" || normalizedStatus === "initial contact";
-    return hours < 24 && isNew && !l.lastContactedAt && !l.lastContactAt;
-  });
-
-  if (recentGenerated.length > 0) {
-    notifications.push({
-      id: `generated_${Date.now()}`,
-      type: "leads_generated",
-      title: `${recentGenerated.length} leads generated`,
-      description: "New leads ready to work — start reaching out",
-      href: "/leads",
-      createdAt: now,
-      read: false,
-      urgency: "low",
-    });
-  }
-
-  // 5. DEAL WON (recent wins from activities timeline)
+  // 4. DEAL WON (recent wins from activities timeline)
   const recentWon = leads
     .filter((l) => {
       if (l.status.toLowerCase() !== "won") return false;
-      if (userRole === "agent" && l.assignedToUid !== userId) return false;
+      const leadAssignee = l.assignedToUid ?? l.assignedRepId ?? "";
+      if (leadAssignee !== currentUserId) return false;
       const closed = tsToDate(l.closedAt) ?? tsToDate(l.updatedAt);
       if (!closed) return false;
       return now.getTime() - closed.getTime() < 24 * 3600000;

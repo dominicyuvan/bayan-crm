@@ -41,15 +41,19 @@ export function TopBar() {
   const [open, setOpen] = React.useState(false);
   const [notifOpen, setNotifOpen] = React.useState(false);
   const [readIds, setReadIds] = React.useState<Set<string>>(new Set());
+  const notificationsStorageKey = React.useMemo(
+    () => `bayan_read_notifs_${profile?.uid ?? "anonymous"}`,
+    [profile?.uid]
+  );
 
   React.useEffect(() => {
     try {
-      const stored = window.localStorage.getItem("bayan_read_notifs");
+      const stored = window.localStorage.getItem(notificationsStorageKey);
       setReadIds(new Set(stored ? JSON.parse(stored) : []));
     } catch {
       setReadIds(new Set());
     }
-  }, []);
+  }, [notificationsStorageKey]);
 
   const notifications = React.useMemo(
     () =>
@@ -72,7 +76,7 @@ export function TopBar() {
   function persistRead(next: Set<string>) {
     setReadIds(next);
     try {
-      window.localStorage.setItem("bayan_read_notifs", JSON.stringify([...next]));
+      window.localStorage.setItem(notificationsStorageKey, JSON.stringify([...next]));
     } catch {
       // ignore
     }
@@ -257,10 +261,6 @@ export function TopBar() {
                       deal_won: {
                         icon: "🏆",
                         bg: "bg-green-100",
-                      },
-                      leads_generated: {
-                        icon: "✨",
-                        bg: "bg-purple-100",
                       },
                       never_contacted: {
                         icon: "👤",
