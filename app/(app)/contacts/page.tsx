@@ -37,6 +37,7 @@ export default function ContactsPage() {
   const [sortBy, setSortBy] = React.useState<
     "name_asc" | "name_desc" | "last_contact_desc" | "last_contact_asc" | "activity_desc"
   >("last_contact_desc");
+  const [viewMode, setViewMode] = React.useState<"classic" | "grid" | "table">("table");
   const isMobile = useIsMobile();
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
@@ -333,6 +334,19 @@ export default function ContactsPage() {
           )}
           {/* Desktop table */}
           <div className="hidden rounded-xl border bg-card sm:block">
+            <div className="flex items-center justify-between border-b bg-muted/30 px-3 py-2">
+              <div className="text-sm font-medium">All Contacts</div>
+              <Select value={viewMode} onValueChange={(v) => setViewMode(v as typeof viewMode)}>
+                <SelectTrigger className="h-8 w-36 bg-background text-xs">
+                  <SelectValue placeholder="Table View" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="classic">Classic View</SelectItem>
+                  <SelectItem value="grid">Grid View</SelectItem>
+                  <SelectItem value="table">Table View</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -343,13 +357,12 @@ export default function ContactsPage() {
                       aria-label="Select all contacts"
                     />
                   </TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Company</TableHead>
+                  <TableHead>Last Name</TableHead>
+                  <TableHead>First Name</TableHead>
+                  <TableHead>Account Name</TableHead>
+                  <TableHead>Email</TableHead>
                   <TableHead>Phone Number</TableHead>
                   <TableHead>Source</TableHead>
-                  <TableHead>Tags</TableHead>
-                  <TableHead>Last Contact</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -366,79 +379,17 @@ export default function ContactsPage() {
                         aria-label={`Select ${c.firstName} ${c.lastName}`}
                       />
                     </TableCell>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="min-w-0 truncate">
-                          {c.firstName} {c.lastName}
-                        </span>
-                        <span className="whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                          {(c.id && activityCountsByContactId.get(c.id)) ?? 0} activities
-                        </span>
-                      </div>
-                    </TableCell>
+                    <TableCell className="font-medium">{c.lastName || "—"}</TableCell>
+                    <TableCell>{c.firstName || "—"}</TableCell>
                     <TableCell>{c.company ?? "—"}</TableCell>
+                    <TableCell>{c.email ?? "—"}</TableCell>
                     <TableCell>{c.phone || c.whatsapp || "—"}</TableCell>
                     <TableCell>{c.source ?? "—"}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {(c.tags ?? []).slice(0, 2).join(", ") || "—"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {tsToDate(c.lastContactAt)?.toLocaleDateString() ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {(() => {
-                        const raw = c.whatsapp || c.phone || "";
-                        const digits = toWaNumber(raw);
-                        if (!digits) return null;
-                        return (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="mr-2 text-green-600 hover:bg-green-50 hover:text-green-700"
-                            title="Open in WhatsApp Web"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.open(
-                                `https://web.whatsapp.com/send?phone=${digits}`,
-                                "_blank",
-                                "noopener,noreferrer"
-                              );
-                            }}
-                          >
-                            <MessageCircle className="h-4 w-4" />
-                            <span className="sr-only">Open in WhatsApp Web</span>
-                          </Button>
-                        );
-                      })()}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="mr-2"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!c.id) return;
-                          setPreselectedContactId(c.id);
-                          setAddLeadOpen(true);
-                        }}
-                      >
-                        Convert to Lead
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedId(c.id);
-                        }}
-                      >
-                        View
-                      </Button>
-                    </TableCell>
                   </TableRow>
                 ))}
                 {visibleContacts.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
                       No contacts found.
                     </TableCell>
                   </TableRow>
