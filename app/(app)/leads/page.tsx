@@ -105,6 +105,10 @@ export default function LeadsPage() {
   const [status, setStatus] = React.useState<typeof STATUSES[number]>("all");
   const [temp, setTemp] = React.useState<typeof TEMPS[number]>("all");
   const [source, setSource] = React.useState<string>("all");
+  const [phoneFilter, setPhoneFilter] = React.useState<"all" | "with_phone" | "without_phone">("all");
+  const [sortBy, setSortBy] = React.useState<
+    "updated_desc" | "value_desc" | "value_asc" | "contact_asc" | "status_asc"
+  >("updated_desc");
   const [rep, setRep] = React.useState<string>("all");
   const isMobile = useIsMobile();
 
@@ -196,6 +200,7 @@ export default function LeadsPage() {
       if (role === "agent" && ownerUid !== profile?.uid) return false;
       const c = contacts.items.find((cc) => cc.id === l.contactId);
       const contactName = c ? `${c.firstName} ${c.lastName}`.toLowerCase() : "";
+      const contactPhone = ((l as any).contactPhone ?? c?.phone ?? c?.whatsapp ?? "").toString().trim();
       const pt = (l.propertyType ?? "").toLowerCase();
       const loc = (l.location ?? "").toLowerCase();
       const matchesQ =
@@ -207,12 +212,34 @@ export default function LeadsPage() {
       const matchesTemp = temp === "all" || l.temperature === temp;
       const matchesSource = source === "all" || l.source === source;
       const matchesRep = rep === "all" || ownerUid === rep;
-      return matchesQ && matchesStatus && matchesTemp && matchesSource && matchesRep;
+      const matchesPhone =
+        phoneFilter === "all" ||
+        (phoneFilter === "with_phone" && !!contactPhone) ||
+        (phoneFilter === "without_phone" && !contactPhone);
+      return matchesQ && matchesStatus && matchesTemp && matchesSource && matchesRep && matchesPhone;
     });
-  }, [leads.items, contacts.items, q, status, temp, source, rep, role, profile?.uid]);
+  }, [leads.items, contacts.items, q, status, temp, source, rep, role, profile?.uid, phoneFilter]);
 
-  const allSelected = filtered.length > 0 && filtered.every((l) => !!l.id && selectedIds.has(l.id));
-  const someSelected = filtered.some((l) => !!l.id && selectedIds.has(l.id));
+  const visibleLeads = React.useMemo(() => {
+    const next = [...filtered];
+    next.sort((a, b) => {
+      if (sortBy === "value_desc") return (b.valueOmr ?? 0) - (a.valueOmr ?? 0);
+      if (sortBy === "value_asc") return (a.valueOmr ?? 0) - (b.valueOmr ?? 0);
+      if (sortBy === "contact_asc") {
+        const ca = contacts.items.find((cc) => cc.id === a.contactId);
+        const cb = contacts.items.find((cc) => cc.id === b.contactId);
+        const nameA = ca ? `${ca.firstName} ${ca.lastName}` : "";
+        const nameB = cb ? `${cb.firstName} ${cb.lastName}` : "";
+        return nameA.localeCompare(nameB);
+      }
+      if (sortBy === "status_asc") return a.status.localeCompare(b.status);
+      return (tsToDate(b.updatedAt)?.getTime() ?? 0) - (tsToDate(a.updatedAt)?.getTime() ?? 0);
+    });
+    return next;
+  }, [filtered, sortBy, contacts.items]);
+
+  const allSelected = visibleLeads.length > 0 && visibleLeads.every((l) => !!l.id && selectedIds.has(l.id));
+  const someSelected = visibleLeads.some((l) => !!l.id && selectedIds.has(l.id));
 
   function toggleRow(leadId: string, checked: boolean) {
     setSelectedIds((prev) => {
@@ -226,7 +253,7 @@ export default function LeadsPage() {
   function toggleAllVisible(checked: boolean) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      for (const l of filtered) {
+      for (const l of visibleLeads) {
         if (!l.id) continue;
         if (checked) next.add(l.id);
         else next.delete(l.id);
@@ -237,7 +264,7 @@ export default function LeadsPage() {
 
   async function applyBulkStatus() {
     if (!bulkStatus || selectedIds.size === 0) return;
-    const picked = filtered.filter((l) => l.id && selectedIds.has(l.id));
+    const picked = visibleLeads.filter((l) => l.id && selectedIds.has(l.id));
     if (picked.length === 0) {
       toast.error("No visible leads selected");
       return;
@@ -471,6 +498,28 @@ export default function LeadsPage() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={phoneFilter} onValueChange={(v) => setPhoneFilter(v as typeof phoneFilter)}>
+          <SelectTrigger className="sm:w-44">
+            <SelectValue placeholder="Phone" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Phones</SelectItem>
+            <SelectItem value="with_phone">Has Phone</SelectItem>
+            <SelectItem value="without_phone">No Phone</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+          <SelectTrigger className="sm:w-56">
+            <SelectValue placeholder="Sort" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="updated_desc">Sort: Recently Updated</SelectItem>
+            <SelectItem value="value_desc">Sort: Value (High-Low)</SelectItem>
+            <SelectItem value="value_asc">Sort: Value (Low-High)</SelectItem>
+            <SelectItem value="contact_asc">Sort: Contact (A-Z)</SelectItem>
+            <SelectItem value="status_asc">Sort: Status (A-Z)</SelectItem>
+          </SelectContent>
+        </Select>
         {isManager && (
           <div className="w-full sm:w-auto">
             <div className="flex gap-2 overflow-x-auto pb-1">
@@ -502,7 +551,15 @@ export default function LeadsPage() {
           <Button
             variant="outline"
             onClick={() =>
-              (setQ(""), setStatus("all"), setTemp("all"), setSource("all"), setRep("all"))
+              (
+                setQ(""),
+                setStatus("all"),
+                setTemp("all"),
+                setSource("all"),
+                setPhoneFilter("all"),
+                setSortBy("updated_desc"),
+                setRep("all")
+              )
             }
           >
             Clear
@@ -517,14 +574,14 @@ export default function LeadsPage() {
         </div>
       ) : isMobile ? (
         <div className="grid gap-3">
-          {filtered.map((l) => (
+          {visibleLeads.map((l) => (
             <MobileLeadCard
               key={l.id}
               lead={l}
               onClick={(lead) => setSelectedId(lead.id)}
             />
           ))}
-          {filtered.length === 0 && (
+          {visibleLeads.length === 0 && (
             <div className="rounded-xl border bg-card p-6 text-center text-sm text-muted-foreground">
               No leads found.
             </div>
@@ -574,6 +631,7 @@ export default function LeadsPage() {
                     />
                   </TableHead>
                   <TableHead>Contact</TableHead>
+                  <TableHead>Phone</TableHead>
                   <TableHead>Property Type</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead>Value</TableHead>
@@ -582,8 +640,9 @@ export default function LeadsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((l) => {
+                {visibleLeads.map((l) => {
                   const c = contacts.items.find((cc) => cc.id === l.contactId);
+                  const phone = (l as any).contactPhone || c?.phone || c?.whatsapp || "—";
                   return (
                     <TableRow
                       key={l.id}
@@ -610,6 +669,7 @@ export default function LeadsPage() {
                           ) : null}
                         </div>
                       </TableCell>
+                      <TableCell>{phone}</TableCell>
                       <TableCell>{l.propertyType ?? "—"}</TableCell>
                       <TableCell>{l.location ?? "—"}</TableCell>
                       <TableCell>
@@ -681,9 +741,9 @@ export default function LeadsPage() {
                     </TableRow>
                   );
                 })}
-                {filtered.length === 0 && (
+                {visibleLeads.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">
                       No leads found.
                     </TableCell>
                   </TableRow>
@@ -693,7 +753,7 @@ export default function LeadsPage() {
           </div>
 
           <div className="grid gap-3 sm:hidden">
-            {filtered.map((l) => {
+            {visibleLeads.map((l) => {
               const c = contacts.items.find((cc) => cc.id === l.contactId);
               return (
                 <button
@@ -784,7 +844,7 @@ export default function LeadsPage() {
                 </button>
               );
             })}
-            {filtered.length === 0 && (
+            {visibleLeads.length === 0 && (
               <div className="rounded-xl border bg-card p-6 text-center text-sm text-muted-foreground">
                 No leads found.
               </div>

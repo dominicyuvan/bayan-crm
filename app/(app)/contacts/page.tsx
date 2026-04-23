@@ -33,6 +33,10 @@ export default function ContactsPage() {
 
   const [q, setQ] = React.useState("");
   const [source, setSource] = React.useState<string>("all");
+  const [phoneFilter, setPhoneFilter] = React.useState<"all" | "with_phone" | "without_phone">("all");
+  const [sortBy, setSortBy] = React.useState<
+    "name_asc" | "name_desc" | "last_contact_desc" | "last_contact_asc" | "activity_desc"
+  >("last_contact_desc");
   const isMobile = useIsMobile();
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
@@ -52,12 +56,17 @@ export default function ContactsPage() {
       const name = `${c.firstName} ${c.lastName}`.toLowerCase();
       const company = (c.company ?? "").toLowerCase();
       const phone = (c.phone ?? "").toLowerCase();
+      const hasPhone = !!(c.phone ?? c.whatsapp ?? "").trim();
       const matchesQ =
         !query || name.includes(query) || company.includes(query) || phone.includes(query);
       const matchesSource = source === "all" || c.source === source;
-      return matchesQ && matchesSource;
+      const matchesPhone =
+        phoneFilter === "all" ||
+        (phoneFilter === "with_phone" && hasPhone) ||
+        (phoneFilter === "without_phone" && !hasPhone);
+      return matchesQ && matchesSource && matchesPhone;
     });
-  }, [contacts.items, q, source]);
+  }, [contacts.items, q, source, phoneFilter]);
 
   const visibleActivities = React.useMemo(() => {
     if (!profile?.uid) return [];
@@ -77,8 +86,31 @@ export default function ContactsPage() {
     return map;
   }, [visibleActivities]);
 
-  const allSelected = filtered.length > 0 && filtered.every((c) => !!c.id && selectedIds.has(c.id));
-  const someSelected = filtered.some((c) => !!c.id && selectedIds.has(c.id));
+  const visibleContacts = React.useMemo(() => {
+    const next = [...filtered];
+    next.sort((a, b) => {
+      if (sortBy === "name_asc") {
+        return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
+      }
+      if (sortBy === "name_desc") {
+        return `${b.firstName} ${b.lastName}`.localeCompare(`${a.firstName} ${a.lastName}`);
+      }
+      if (sortBy === "last_contact_asc") {
+        return (tsToDate(a.lastContactAt)?.getTime() ?? 0) - (tsToDate(b.lastContactAt)?.getTime() ?? 0);
+      }
+      if (sortBy === "activity_desc") {
+        return (
+          (activityCountsByContactId.get(b.id ?? "") ?? 0) - (activityCountsByContactId.get(a.id ?? "") ?? 0)
+        );
+      }
+      return (tsToDate(b.lastContactAt)?.getTime() ?? 0) - (tsToDate(a.lastContactAt)?.getTime() ?? 0);
+    });
+    return next;
+  }, [filtered, sortBy, activityCountsByContactId]);
+
+  const allSelected =
+    visibleContacts.length > 0 && visibleContacts.every((c) => !!c.id && selectedIds.has(c.id));
+  const someSelected = visibleContacts.some((c) => !!c.id && selectedIds.has(c.id));
 
   function toggleRow(contactId: string, checked: boolean) {
     setSelectedIds((prev) => {
@@ -92,7 +124,7 @@ export default function ContactsPage() {
   function toggleAllVisible(checked: boolean) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      for (const c of filtered) {
+      for (const c of visibleContacts) {
         if (!c.id) continue;
         if (checked) next.add(c.id);
         else next.delete(c.id);
@@ -103,7 +135,7 @@ export default function ContactsPage() {
 
   async function applyBulkSource() {
     if (!bulkSource || selectedIds.size === 0) return;
-    const picked = filtered.filter((c) => c.id && selectedIds.has(c.id));
+    const picked = visibleContacts.filter((c) => c.id && selectedIds.has(c.id));
     if (picked.length === 0) {
       toast.error("No visible contacts selected");
       return;
@@ -217,9 +249,34 @@ export default function ContactsPage() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={phoneFilter} onValueChange={(v) => setPhoneFilter(v as typeof phoneFilter)}>
+          <SelectTrigger className="sm:w-44">
+            <SelectValue placeholder="Phone" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Phones</SelectItem>
+            <SelectItem value="with_phone">Has Phone</SelectItem>
+            <SelectItem value="without_phone">No Phone</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+          <SelectTrigger className="sm:w-56">
+            <SelectValue placeholder="Sort" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="last_contact_desc">Sort: Last Contact (Newest)</SelectItem>
+            <SelectItem value="last_contact_asc">Sort: Last Contact (Oldest)</SelectItem>
+            <SelectItem value="name_asc">Sort: Name (A-Z)</SelectItem>
+            <SelectItem value="name_desc">Sort: Name (Z-A)</SelectItem>
+            <SelectItem value="activity_desc">Sort: Activities (High-Low)</SelectItem>
+          </SelectContent>
+        </Select>
 
         <div className="sm:ml-auto">
-          <Button variant="outline" onClick={() => (setQ(""), setSource("all"))}>
+          <Button
+            variant="outline"
+            onClick={() => (setQ(""), setSource("all"), setPhoneFilter("all"), setSortBy("last_contact_desc"))}
+          >
             Clear
           </Button>
         </div>
@@ -232,14 +289,14 @@ export default function ContactsPage() {
         </div>
       ) : isMobile ? (
         <div className="grid gap-3">
-          {filtered.map((c) => (
+          {visibleContacts.map((c) => (
             <MobileContactCard
               key={c.id}
               contact={c}
               onClick={(contact) => setSelectedId(contact.id)}
             />
           ))}
-          {filtered.length === 0 && (
+          {visibleContacts.length === 0 && (
             <div className="rounded-xl border bg-card p-6 text-center text-sm text-muted-foreground">
               No contacts found.
             </div>
@@ -288,7 +345,7 @@ export default function ContactsPage() {
                   </TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Company</TableHead>
-                  <TableHead>Phone</TableHead>
+                  <TableHead>Phone Number</TableHead>
                   <TableHead>Source</TableHead>
                   <TableHead>Tags</TableHead>
                   <TableHead>Last Contact</TableHead>
@@ -296,7 +353,7 @@ export default function ContactsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((c) => (
+                {visibleContacts.map((c) => (
                   <TableRow
                     key={c.id}
                     className="cursor-pointer"
@@ -320,7 +377,7 @@ export default function ContactsPage() {
                       </div>
                     </TableCell>
                     <TableCell>{c.company ?? "—"}</TableCell>
-                    <TableCell>{c.phone}</TableCell>
+                    <TableCell>{c.phone || c.whatsapp || "—"}</TableCell>
                     <TableCell>{c.source ?? "—"}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {(c.tags ?? []).slice(0, 2).join(", ") || "—"}
@@ -379,7 +436,7 @@ export default function ContactsPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {filtered.length === 0 && (
+                {visibleContacts.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">
                       No contacts found.
@@ -392,7 +449,7 @@ export default function ContactsPage() {
 
           {/* Mobile cards */}
           <div className="grid gap-3 sm:hidden">
-            {filtered.map((c) => (
+            {visibleContacts.map((c) => (
               <button
                 key={c.id}
                 className={cn("rounded-xl border bg-card p-4 text-left")}
@@ -402,14 +459,14 @@ export default function ContactsPage() {
                   {c.firstName} {c.lastName}
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">
-                  {c.company ?? "—"} • {c.phone}
+                  {c.company ?? "—"} • {c.phone || c.whatsapp || "—"}
                 </div>
                 <div className="mt-2 text-xs text-muted-foreground">
                   Last contact: {tsToDate(c.lastContactAt)?.toLocaleDateString() ?? "—"}
                 </div>
               </button>
             ))}
-            {filtered.length === 0 && (
+            {visibleContacts.length === 0 && (
               <div className="rounded-xl border bg-card p-6 text-center text-sm text-muted-foreground">
                 No contacts found.
               </div>
