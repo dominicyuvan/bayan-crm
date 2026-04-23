@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { doc, serverTimestamp, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";
 import { useContacts, useLeads, useTeamMembers } from "@/lib/firestore-provider";
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -108,6 +109,9 @@ export default function LeadsPage() {
   const isMobile = useIsMobile();
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  const [bulkStatus, setBulkStatus] = React.useState<LeadStatus | "">("");
+  const [bulkSaving, setBulkSaving] = React.useState(false);
   const [mobileStatusLeadId, setMobileStatusLeadId] = React.useState<string | null>(null);
   const [bannerDismissed, setBannerDismissed] = React.useState(false);
   const [quickFollowUpItem, setQuickFollowUpItem] = React.useState<FollowUpItem | null>(null);
@@ -206,6 +210,63 @@ export default function LeadsPage() {
       return matchesQ && matchesStatus && matchesTemp && matchesSource && matchesRep;
     });
   }, [leads.items, contacts.items, q, status, temp, source, rep, role, profile?.uid]);
+
+  const allSelected = filtered.length > 0 && filtered.every((l) => !!l.id && selectedIds.has(l.id));
+  const someSelected = filtered.some((l) => !!l.id && selectedIds.has(l.id));
+
+  function toggleRow(leadId: string, checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(leadId);
+      else next.delete(leadId);
+      return next;
+    });
+  }
+
+  function toggleAllVisible(checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const l of filtered) {
+        if (!l.id) continue;
+        if (checked) next.add(l.id);
+        else next.delete(l.id);
+      }
+      return next;
+    });
+  }
+
+  async function applyBulkStatus() {
+    if (!bulkStatus || selectedIds.size === 0) return;
+    const picked = filtered.filter((l) => l.id && selectedIds.has(l.id));
+    if (picked.length === 0) {
+      toast.error("No visible leads selected");
+      return;
+    }
+    setBulkSaving(true);
+    try {
+      const batch = writeBatch(db);
+      const normalized = bulkStatus.toLowerCase();
+      for (const l of picked) {
+        if (!l.id) continue;
+        batch.update(doc(db, "leads", l.id), {
+          status: bulkStatus,
+          updatedAt: serverTimestamp(),
+          ...(normalized === "won" || normalized === "lost"
+            ? { closedAt: serverTimestamp() }
+            : { closedAt: null }),
+        });
+      }
+      await batch.commit();
+      toast.success(`Updated status for ${picked.length} lead${picked.length > 1 ? "s" : ""}`);
+      setBulkStatus("");
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error("Bulk status update failed:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to apply bulk update");
+    } finally {
+      setBulkSaving(false);
+    }
+  }
 
   const generatedUncontactedCount = React.useMemo(() => {
     return filtered.filter((l: any) => l.generatedAt && !getLeadLastContactDate(l)).length;
@@ -471,10 +532,47 @@ export default function LeadsPage() {
         </div>
       ) : (
         <>
+          {selectedIds.size > 0 && (
+            <div className="hidden items-center gap-2 rounded-lg border bg-muted/30 p-2 sm:flex">
+              <span className="text-sm font-medium">{selectedIds.size} selected</span>
+              <Select
+                value={bulkStatus}
+                onValueChange={(v) => setBulkStatus(v as LeadStatus)}
+              >
+                <SelectTrigger className="w-52 bg-background">
+                  <SelectValue placeholder="Set status..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {LEAD_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                onClick={() => void applyBulkStatus()}
+                disabled={!bulkStatus || bulkSaving}
+              >
+                Apply Bulk Action
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+                Clear Selection
+              </Button>
+            </div>
+          )}
           <div className="hidden rounded-xl border bg-card sm:block">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                      onCheckedChange={(v) => toggleAllVisible(!!v)}
+                      aria-label="Select all leads"
+                    />
+                  </TableHead>
                   <TableHead>Contact</TableHead>
                   <TableHead>Property Type</TableHead>
                   <TableHead>Location</TableHead>
@@ -492,6 +590,13 @@ export default function LeadsPage() {
                       className="cursor-pointer"
                       onClick={() => setSelectedId(l.id)}
                     >
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={!!l.id && selectedIds.has(l.id)}
+                          onCheckedChange={(v) => l.id && toggleRow(l.id, !!v)}
+                          aria-label="Select lead"
+                        />
+                      </TableCell>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           <span>{c ? `${c.firstName} ${c.lastName}` : "—"}</span>
@@ -578,7 +683,7 @@ export default function LeadsPage() {
                 })}
                 {filtered.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
                       No leads found.
                     </TableCell>
                   </TableRow>

@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { doc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";
 import { useActivities, useContacts } from "@/lib/firestore-provider";
 import { tsToDate } from "@/lib/firestore";
@@ -12,10 +14,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Phone, MessageCircle, ChevronRight } from "lucide-react";
 import { SOURCE_OPTIONS } from "@/lib/constants";
+import { toast } from "sonner";
 
 function toWaNumber(value: string) {
   return value.replace(/[^\d]/g, "");
@@ -34,6 +38,9 @@ export default function ContactsPage() {
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [addLeadOpen, setAddLeadOpen] = React.useState(false);
   const [preselectedContactId, setPreselectedContactId] = React.useState<string | undefined>(undefined);
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  const [bulkSource, setBulkSource] = React.useState<string>("");
+  const [bulkSaving, setBulkSaving] = React.useState(false);
   const selected = React.useMemo(() => {
     return contacts.items.find((c) => c.id === selectedId) ?? null;
   }, [contacts.items, selectedId]);
@@ -69,6 +76,59 @@ export default function ContactsPage() {
     }
     return map;
   }, [visibleActivities]);
+
+  const allSelected = filtered.length > 0 && filtered.every((c) => !!c.id && selectedIds.has(c.id));
+  const someSelected = filtered.some((c) => !!c.id && selectedIds.has(c.id));
+
+  function toggleRow(contactId: string, checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(contactId);
+      else next.delete(contactId);
+      return next;
+    });
+  }
+
+  function toggleAllVisible(checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const c of filtered) {
+        if (!c.id) continue;
+        if (checked) next.add(c.id);
+        else next.delete(c.id);
+      }
+      return next;
+    });
+  }
+
+  async function applyBulkSource() {
+    if (!bulkSource || selectedIds.size === 0) return;
+    const picked = filtered.filter((c) => c.id && selectedIds.has(c.id));
+    if (picked.length === 0) {
+      toast.error("No visible contacts selected");
+      return;
+    }
+    setBulkSaving(true);
+    try {
+      const batch = writeBatch(db);
+      for (const c of picked) {
+        if (!c.id) continue;
+        batch.update(doc(db, "contacts", c.id), {
+          source: bulkSource,
+          updatedAt: serverTimestamp(),
+        });
+      }
+      await batch.commit();
+      toast.success(`Updated source for ${picked.length} contact${picked.length > 1 ? "s" : ""}`);
+      setBulkSource("");
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error("Bulk source update failed:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to apply bulk update");
+    } finally {
+      setBulkSaving(false);
+    }
+  }
 
   function MobileContactCard({
     contact,
@@ -187,11 +247,45 @@ export default function ContactsPage() {
         </div>
       ) : (
         <>
+          {selectedIds.size > 0 && (
+            <div className="hidden items-center gap-2 rounded-lg border bg-muted/30 p-2 sm:flex">
+              <span className="text-sm font-medium">{selectedIds.size} selected</span>
+              <Select value={bulkSource} onValueChange={setBulkSource}>
+                <SelectTrigger className="w-52 bg-background">
+                  <SelectValue placeholder="Set source..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {SOURCE_OPTIONS.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                onClick={() => void applyBulkSource()}
+                disabled={!bulkSource || bulkSaving}
+              >
+                Apply Bulk Action
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+                Clear Selection
+              </Button>
+            </div>
+          )}
           {/* Desktop table */}
           <div className="hidden rounded-xl border bg-card sm:block">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                      onCheckedChange={(v) => toggleAllVisible(!!v)}
+                      aria-label="Select all contacts"
+                    />
+                  </TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Company</TableHead>
                   <TableHead>Phone</TableHead>
@@ -208,6 +302,13 @@ export default function ContactsPage() {
                     className="cursor-pointer"
                     onClick={() => setSelectedId(c.id)}
                   >
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={!!c.id && selectedIds.has(c.id)}
+                        onCheckedChange={(v) => c.id && toggleRow(c.id, !!v)}
+                        aria-label={`Select ${c.firstName} ${c.lastName}`}
+                      />
+                    </TableCell>
                     <TableCell className="font-medium">
                       <div className="flex items-center justify-between gap-3">
                         <span className="min-w-0 truncate">
@@ -280,7 +381,7 @@ export default function ContactsPage() {
                 ))}
                 {filtered.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">
                       No contacts found.
                     </TableCell>
                   </TableRow>
