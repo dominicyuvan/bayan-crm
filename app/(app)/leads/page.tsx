@@ -6,7 +6,7 @@ import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";
 import { useContacts, useLeads, useTeamMembers } from "@/lib/firestore-provider";
 import type { LeadStatus, LeadTemperature } from "@/lib/types";
-import { fireConfetti, formatOMR } from "@/lib/utils";
+import { cn, fireConfetti, formatOMR } from "@/lib/utils";
 import { AddLeadModal } from "@/components/leads/add-lead-modal";
 import { LeadDetailDrawer } from "@/components/leads/lead-detail-drawer";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +21,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -33,49 +34,57 @@ import { SOURCE_OPTIONS } from "@/lib/constants";
 
 const STATUSES: Array<LeadStatus | "all"> = [
   "all",
-  "Initial Contact",
-  "Send Brochure",
-  "Arrange Visit",
-  "Won",
-  "Lost",
+  "new",
+  "contacted",
+  "qualified",
+  "initial_contact",
+  "arrange_visit",
+  "proposal_sent",
+  "negotiation",
+  "won",
+  "lost",
+  "on_hold",
 ];
 const TEMPS: Array<LeadTemperature | "all"> = ["all", "cold", "warm", "hot"];
 const LEAD_STATUSES: LeadStatus[] = [
-  "Initial Contact",
-  "Send Brochure",
-  "Arrange Visit",
-  "Won",
-  "Lost",
+  "new",
+  "contacted",
+  "qualified",
+  "initial_contact",
+  "arrange_visit",
+  "proposal_sent",
+  "negotiation",
+  "won",
+  "lost",
+  "on_hold",
 ];
 
-function statusBadgeVariant(status: LeadStatus) {
-  switch (status) {
-    case "Initial Contact":
-      return "default";
-    case "Send Brochure":
-      return "secondary";
-    case "Arrange Visit":
-      return "outline";
-    case "Won":
-      return "default";
-    case "Lost":
-      return "destructive";
-  }
+const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
+  new: { label: "New", className: "bg-blue-100 text-blue-700 border-blue-200" },
+  contacted: { label: "Contacted", className: "bg-amber-100 text-amber-700 border-amber-200" },
+  qualified: { label: "Qualified", className: "bg-purple-100 text-purple-700 border-purple-200" },
+  initial_contact: {
+    label: "Initial Contact",
+    className: "bg-blue-100 text-blue-700 border-blue-200",
+  },
+  arrange_visit: { label: "Arrange Visit", className: "bg-amber-100 text-amber-700 border-amber-200" },
+  proposal_sent: { label: "Proposal Sent", className: "bg-purple-100 text-purple-700 border-purple-200" },
+  negotiation: { label: "Negotiation", className: "bg-orange-100 text-orange-700 border-orange-200" },
+  won: { label: "Won", className: "bg-green-100 text-green-700 border-green-200" },
+  lost: { label: "Lost", className: "bg-red-100 text-red-700 border-red-200" },
+  on_hold: { label: "On Hold", className: "bg-gray-100 text-gray-700 border-gray-200" },
+};
+
+function formatStatusLabel(status: string) {
+  return STATUS_CONFIG[status]?.label ?? status.replaceAll("_", " ");
 }
 
-function statusBadgeClass(status: LeadStatus) {
-  switch (status) {
-    case "Initial Contact":
-      return "bg-blue-100 text-blue-700 border-blue-200";
-    case "Send Brochure":
-      return "bg-amber-100 text-amber-700 border-amber-200";
-    case "Arrange Visit":
-      return "bg-background text-purple-700 border-purple-400";
-    case "Won":
-      return "bg-green-100 text-green-700 border-green-200";
-    case "Lost":
-      return "bg-red-100 text-red-700 border-red-200";
-  }
+function StatusBadge({ status }: { status: string }) {
+  const config = STATUS_CONFIG[status] ?? {
+    label: status,
+    className: "bg-gray-100 text-gray-700 border-gray-200",
+  };
+  return <Badge className={cn("border text-xs", config.className)}>{config.label}</Badge>;
 }
 
 function getLeadLastContactDate(lead: any) {
@@ -321,13 +330,6 @@ export default function LeadsPage() {
       warm: "bg-amber-400",
       cold: "bg-slate-400",
     };
-    const statusColors: Record<string, string> = {
-      "Initial Contact": "bg-blue-100 text-blue-700",
-      "Send Brochure": "bg-amber-100 text-amber-700",
-      "Arrange Visit": "bg-purple-100 text-purple-700",
-      Won: "bg-green-100 text-green-700",
-      Lost: "bg-red-100 text-red-700",
-    };
     const contact = contacts.items.find((c) => c.id === lead.contactId);
     const valueStr =
       typeof lead.valueOmr === "number" ? lead.valueOmr.toFixed(3) : "0.000";
@@ -374,10 +376,10 @@ export default function LeadsPage() {
                   setMobileStatusLeadId(lead.id ?? null);
                 }}
                 className={`rounded-full px-2 py-1 text-xs font-medium ${
-                  statusColors[lead.status] ?? "bg-muted text-foreground"
+                  STATUS_CONFIG[lead.status]?.className ?? "bg-muted text-foreground"
                 }`}
               >
-                {lead.status}
+                {formatStatusLabel(lead.status)}
               </button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-44 p-1">
@@ -394,7 +396,7 @@ export default function LeadsPage() {
                       setMobileStatusLeadId(null);
                     }}
                   >
-                    {s}
+                    {formatStatusLabel(s)}
                   </button>
                 ))}
               </div>
@@ -465,7 +467,7 @@ export default function LeadsPage() {
           <SelectContent>
             {STATUSES.map((s) => (
               <SelectItem key={s} value={s}>
-                {s === "all" ? "All statuses" : s}
+                {s === "all" ? "All statuses" : formatStatusLabel(s)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -687,28 +689,41 @@ export default function LeadsPage() {
                               type="button"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <Badge
-                                variant={statusBadgeVariant(l.status)}
-                                className={statusBadgeClass(l.status)}
-                              >
-                                {l.status}
-                              </Badge>
+                              <StatusBadge status={l.status} />
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            {LEAD_STATUSES.map((s) => (
-                              <DropdownMenuItem
-                                key={s}
-                                onSelect={(ev) => {
-                                  ev.preventDefault();
-                                  ev.stopPropagation();
-                                  if (!l.id) return;
-                                  void updateLeadStatus(l, s);
-                                }}
-                              >
-                                {s}
-                              </DropdownMenuItem>
-                            ))}
+                            <DropdownMenuItem
+                              onClick={() => void updateLeadStatus(l, "initial_contact")}
+                            >
+                              Initial Contact
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => void updateLeadStatus(l, "arrange_visit")}
+                            >
+                              Arrange Visit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => void updateLeadStatus(l, "proposal_sent")}
+                            >
+                              Proposal Sent
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => void updateLeadStatus(l, "won")}
+                              className="text-green-600"
+                            >
+                              Mark as Won ✓
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => void updateLeadStatus(l, "lost")}
+                              className="text-red-600"
+                            >
+                              Mark as Lost
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => void updateLeadStatus(l, "on_hold")}>
+                              Put On Hold
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
@@ -792,12 +807,7 @@ export default function LeadsPage() {
                             setMobileStatusLeadId(l.id ?? null);
                           }}
                         >
-                          <Badge
-                            variant={statusBadgeVariant(l.status)}
-                            className={statusBadgeClass(l.status)}
-                          >
-                            {l.status}
-                          </Badge>
+                          <StatusBadge status={l.status} />
                         </button>
                       </PopoverTrigger>
                       <PopoverContent align="end" className="w-44 p-1">
@@ -814,7 +824,7 @@ export default function LeadsPage() {
                                 setMobileStatusLeadId(null);
                               }}
                             >
-                              {s}
+                              {formatStatusLabel(s)}
                             </button>
                           ))}
                         </div>

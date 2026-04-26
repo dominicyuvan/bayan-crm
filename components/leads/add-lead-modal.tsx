@@ -14,10 +14,20 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { X } from "lucide-react";
-import { SOURCE_OPTIONS } from "@/lib/constants";
+import { Badge } from "@/components/ui/badge";
 import { canManageEntity } from "@/lib/permissions";
 
-const PROPERTY_TYPES = ["Office", "Retail", "Warehouse", "Industrial", "Mixed", "Other"];
+const PROPERTY_TYPES = [
+  "Office",
+  "Retail",
+  "Warehouse",
+  "Industrial",
+  "Land",
+  "Villa",
+  "Mixed Use",
+  "Other",
+];
+const SOURCE_OPTIONS = ["Walk In", "Exhibition", "Instagram", "Advertisement", "Call", "Other"];
 export type AddLeadModalProps = {
   preselectedContactId?: string;
   externalOpen?: boolean;
@@ -36,7 +46,6 @@ export function AddLeadModal({
     action: "create",
   });
   const contacts = useContacts();
-  const status: LeadStatus = "Initial Contact";
 
   const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
@@ -47,7 +56,10 @@ export function AddLeadModal({
   const [selectedContactName, setSelectedContactName] = React.useState("");
   const [propertyType, setPropertyType] = React.useState("");
   const [location, setLocation] = React.useState("");
-  const [valueOmr, setValueOmr] = React.useState<string>("");
+  const [unitSize, setUnitSize] = React.useState("");
+  const [budgetMin, setBudgetMin] = React.useState("");
+  const [budgetMax, setBudgetMax] = React.useState("");
+  const [status, setStatus] = React.useState<LeadStatus>("initial_contact");
   const [source, setSource] = React.useState("");
   const [notes, setNotes] = React.useState("");
 
@@ -95,7 +107,10 @@ export function AddLeadModal({
     setSelectedContactName("");
     setPropertyType("");
     setLocation("");
-    setValueOmr("");
+    setUnitSize("");
+    setBudgetMin("");
+    setBudgetMax("");
+    setStatus("initial_contact");
     setSource("");
     setNotes("");
   }
@@ -110,32 +125,45 @@ export function AddLeadModal({
       toast.error("Contact is required");
       return;
     }
-    if (!propertyType.trim()) {
-      toast.error("Property type is required");
-      return;
-    }
     setSubmitting(true);
     try {
-      const parsedValue =
-        valueOmr.trim() === "" ? null : Number(valueOmr.replace(/,/g, ""));
-      if (parsedValue !== null && !Number.isFinite(parsedValue)) {
-        toast.error("Value must be a number");
-        return;
-      }
+      const selectedContact = contacts.items.find((c) => c.id === contactId);
+      const selectedContactPhone = selectedContact?.phone ?? "";
+      const selectedContactCompany = selectedContact?.company ?? "";
+      const numericBudgetMin = parseFloat(budgetMin) || 0;
+      const numericBudgetMax = parseFloat(budgetMax) || 0;
+      const selectedContactNameSafe = selectedContactName || "Unknown Contact";
 
       const payload = {
-        contactId,
-        propertyType: propertyType.trim(),
+        contactId: contactId,
+        contactName: selectedContactNameSafe,
+        contactPhone: selectedContactPhone || "",
+        company: selectedContactCompany || "",
+        propertyType: propertyType.trim() || "Unknown",
         location: location.trim(),
-        valueOmr: parsedValue,
-        status,
-        source: source.trim() || "",
+        value: numericBudgetMax || numericBudgetMin || 0,
+        status: status || "initial_contact",
+        temperature: "warm",
+        score: 30,
+        source: source || "",
         notes: notes.trim() || "",
         assignedTo: profile?.displayName || "",
         assignedToUid: profile?.uid || "",
+        nextAction: "Initial contact",
+        nextActionDue: null,
+        lastContactedAt: null,
+        daysInPipeline: 0,
+        cadenceId: null,
+        cadenceStep: 0,
+        cadenceNextDue: null,
+        budgetMin: numericBudgetMin,
+        budgetMax: numericBudgetMax,
+        unitSize: unitSize.trim() || "",
+        createdBy: profile?.uid || "",
+        createdByName: profile?.displayName || "",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        lastContactAt: serverTimestamp(),
+        lastContactAt: null,
       } satisfies WithFieldValue<Lead>;
 
       await addDoc(leadsCol, payload);
@@ -168,17 +196,18 @@ export function AddLeadModal({
           <DialogTitle>Add lead</DialogTitle>
         </DialogHeader>
 
-        <div className="grid gap-4">
-          <div className="grid gap-2">
+        <div className="grid gap-5">
+          <div className="space-y-3">
+            <p className="text-sm font-semibold">Contact</p>
+            <div className="grid gap-2">
             <Label>
               Contact <span className="text-destructive">*</span>
             </Label>
-            {contactId && !showContactResults ? (
-              <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5">
-                <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-semibold text-primary">
-                  {selectedContactName[0] ?? ""}
-                </div>
-                <span className="flex-1 text-sm font-medium">{selectedContactName}</span>
+              {contactId && !showContactResults ? (
+                <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5">
+                  <Badge variant="secondary" className="max-w-full">
+                    {selectedContactName}
+                  </Badge>
                 <button
                   type="button"
                   onClick={() => {
@@ -258,57 +287,128 @@ export function AddLeadModal({
               </div>
             )}
           </div>
+          </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label>
-                Property Type <span className="text-destructive">*</span>
-              </Label>
-              <Select value={propertyType} onValueChange={setPropertyType}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PROPERTY_TYPES.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
-                    </SelectItem>
+          <div className="space-y-3">
+            <p className="text-sm font-semibold">Property Requirements</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label>Property Type</Label>
+                <Input
+                  list="lead-property-types"
+                  value={propertyType}
+                  onChange={(e) => setPropertyType(e.target.value)}
+                  placeholder="Select or type property type"
+                />
+                <datalist id="lead-property-types">
+                  {PROPERTY_TYPES.map((typeOption) => (
+                    <option key={typeOption} value={typeOption} />
                   ))}
-                </SelectContent>
-              </Select>
+                </datalist>
+              </div>
+              <div className="grid gap-2">
+                <Label>Preferred Location</Label>
+                <Input
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="e.g. CBD Muscat, Al Khoud"
+                />
+              </div>
             </div>
             <div className="grid gap-2">
-              <Label>Location</Label>
-              <Input value={location} onChange={(e) => setLocation(e.target.value)} />
+              <Label>Unit Size</Label>
+              <Input
+                value={unitSize}
+                onChange={(e) => setUnitSize(e.target.value)}
+                placeholder="e.g. 200-300 sqm, 1 floor"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Budget Range (OMR)</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="relative">
+                  <Input
+                    type="number"
+                    placeholder="Min"
+                    value={budgetMin}
+                    onChange={(e) => setBudgetMin(e.target.value)}
+                    className="font-mono pr-14"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                    OMR
+                  </span>
+                </div>
+                <div className="relative">
+                  <Input
+                    type="number"
+                    placeholder="Max"
+                    value={budgetMax}
+                    onChange={(e) => setBudgetMax(e.target.value)}
+                    className="font-mono pr-14"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                    OMR
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-3">
+            <p className="text-sm font-semibold">Lead Details</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label>Status</Label>
+                <Select value={status} onValueChange={(value) => setStatus(value as LeadStatus)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="initial_contact">Initial Contact</SelectItem>
+                    <SelectItem value="arrange_visit">Arrange Visit</SelectItem>
+                    <SelectItem value="proposal_sent">Proposal Sent</SelectItem>
+                    <SelectItem value="won">Won</SelectItem>
+                    <SelectItem value="lost">Lost</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Source</Label>
+                <Select value={source} onValueChange={setSource}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select source" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SOURCE_OPTIONS.map((sourceOption) => (
+                      <SelectItem key={sourceOption} value={sourceOption}>
+                        {sourceOption}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             <div className="grid gap-2">
-              <Label>Value (OMR)</Label>
-              <Input value={valueOmr} onChange={(e) => setValueOmr(e.target.value)} placeholder="e.g. 25,000.000" />
+              <Label>Notes</Label>
+              <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
             </div>
           </div>
 
-          <div className="grid gap-2">
-            <Label>Source</Label>
-            <Select value={source} onValueChange={setSource}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select source" />
-              </SelectTrigger>
-              <SelectContent>
-                {SOURCE_OPTIONS.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {s}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid gap-2">
-            <Label>Notes</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <div className="space-y-3">
+            <p className="text-sm font-semibold">Lead Owner</p>
+            <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/50 p-3">
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                {profile?.displayName?.[0]?.toUpperCase()}
+              </div>
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground">Lead Owner</p>
+                <p className="text-sm font-medium">{profile?.displayName}</p>
+              </div>
+              <Badge variant="outline" className="text-xs capitalize">
+                {profile?.role}
+              </Badge>
+            </div>
           </div>
 
           <div className="flex justify-end gap-2">

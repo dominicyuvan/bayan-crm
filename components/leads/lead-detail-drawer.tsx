@@ -23,6 +23,7 @@ import { useContacts } from "@/lib/firestore-provider";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,41 +41,74 @@ import {
 import { canManageEntity, getRecordOwnerUid } from "@/lib/permissions";
 
 const STATUSES: LeadStatus[] = [
-  "Initial Contact",
-  "Send Brochure",
-  "Arrange Visit",
-  "Won",
-  "Lost",
+  "new",
+  "contacted",
+  "qualified",
+  "initial_contact",
+  "arrange_visit",
+  "proposal_sent",
+  "negotiation",
+  "won",
+  "lost",
+  "on_hold",
 ];
 
 function statusBadgeClass(status: LeadStatus) {
   switch (status) {
-    case "Initial Contact":
+    case "new":
+    case "initial_contact":
       return "bg-blue-100 text-blue-700 border-blue-200";
-    case "Send Brochure":
+    case "contacted":
+    case "arrange_visit":
       return "bg-amber-100 text-amber-700 border-amber-200";
-    case "Arrange Visit":
-      return "bg-background text-purple-700 border-purple-400";
-    case "Won":
+    case "qualified":
+    case "proposal_sent":
+      return "bg-purple-100 text-purple-700 border-purple-200";
+    case "negotiation":
+      return "bg-orange-100 text-orange-700 border-orange-200";
+    case "won":
       return "bg-green-100 text-green-700 border-green-200";
-    case "Lost":
+    case "lost":
       return "bg-red-100 text-red-700 border-red-200";
+    case "on_hold":
+      return "bg-gray-100 text-gray-700 border-gray-200";
   }
 }
 
 function statusBadgeVariant(status: LeadStatus) {
   switch (status) {
-    case "Initial Contact":
+    case "new":
+    case "initial_contact":
       return "default";
-    case "Send Brochure":
+    case "contacted":
+    case "arrange_visit":
       return "secondary";
-    case "Arrange Visit":
+    case "qualified":
+    case "proposal_sent":
+    case "negotiation":
+    case "on_hold":
       return "outline";
-    case "Won":
+    case "won":
       return "default";
-    case "Lost":
+    case "lost":
       return "destructive";
   }
+}
+
+function statusLabel(status: LeadStatus) {
+  const labels: Record<LeadStatus, string> = {
+    new: "New",
+    contacted: "Contacted",
+    qualified: "Qualified",
+    initial_contact: "Initial Contact",
+    arrange_visit: "Arrange Visit",
+    proposal_sent: "Proposal Sent",
+    negotiation: "Negotiation",
+    won: "Won",
+    lost: "Lost",
+    on_hold: "On Hold",
+  };
+  return labels[status] ?? status;
 }
 
 export function LeadDetailDrawer({
@@ -94,7 +128,11 @@ export function LeadDetailDrawer({
   const [propertyType, setPropertyType] = React.useState("");
   const [location, setLocation] = React.useState("");
   const [valueOmr, setValueOmr] = React.useState<string>("");
-  const [status, setStatus] = React.useState<LeadStatus>("Initial Contact");
+  const [unitSize, setUnitSize] = React.useState("");
+  const [budgetMin, setBudgetMin] = React.useState("");
+  const [budgetMax, setBudgetMax] = React.useState("");
+  const [status, setStatus] = React.useState<LeadStatus>("initial_contact");
+  const [notes, setNotes] = React.useState("");
 
   const [scheduleOpen, setScheduleOpen] = React.useState(false);
   const [deletingLead, setDeletingLead] = React.useState(false);
@@ -109,7 +147,11 @@ export function LeadDetailDrawer({
         ? lead.valueOmr.toFixed(3)
         : ""
     );
+    setUnitSize(lead.unitSize ?? "");
+    setBudgetMin(typeof lead.budgetMin === "number" ? String(lead.budgetMin) : "");
+    setBudgetMax(typeof lead.budgetMax === "number" ? String(lead.budgetMax) : "");
     setStatus(lead.status);
+    setNotes(lead.notes ?? "");
   }, [lead]);
 
   const contact = React.useMemo(() => {
@@ -261,10 +303,15 @@ export function LeadDetailDrawer({
       }
 
       await updateDoc(doc(db, "leads", lead.id), {
-        propertyType: propertyType.trim() || null,
-        location: location.trim() || null,
+        propertyType,
+        location,
+        value: parseFloat(budgetMax) || parseFloat(budgetMin) || lead.value || 0,
         valueOmr: parsed,
         status,
+        notes,
+        ...(unitSize ? { unitSize } : {}),
+        ...(budgetMin ? { budgetMin: parseFloat(budgetMin) } : {}),
+        ...(budgetMax ? { budgetMax: parseFloat(budgetMax) } : {}),
         updatedAt: serverTimestamp() as unknown as Timestamp,
         ...(status.toLowerCase() === "won" || status.toLowerCase() === "lost"
           ? { closedAt: serverTimestamp() }
@@ -353,6 +400,10 @@ export function LeadDetailDrawer({
     }
   }
 
+  const isInitialContact = status === "new" || status === "initial_contact";
+  const isArrangeVisit = status === "qualified" || status === "arrange_visit";
+  const isProposal = status === "contacted" || status === "proposal_sent";
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="sm:max-w-xl">
@@ -374,12 +425,12 @@ export function LeadDetailDrawer({
                   variant={statusBadgeVariant(status)}
                   className={statusBadgeClass(status)}
                 >
-                  {status}
+                  {statusLabel(status)}
                 </Badge>
               </div>
 
               <div className="mt-3 space-y-2">
-                {status === "Initial Contact" ? (
+                {isInitialContact ? (
                   <Button
                     className={`w-full justify-center ${isStepOverdue ? "animate-pulse" : ""}`}
                     onClick={() => {
@@ -394,7 +445,7 @@ export function LeadDetailDrawer({
                   </Button>
                 ) : null}
 
-                {status === "Send Brochure" ? (
+                {isProposal ? (
                   <Button
                     variant="secondary"
                     className={`w-full justify-center ${isStepOverdue ? "animate-pulse" : ""}`}
@@ -423,7 +474,7 @@ export function LeadDetailDrawer({
                   </Button>
                 ) : null}
 
-                {status === "Arrange Visit" ? (
+                {isArrangeVisit ? (
                   <Button
                     variant="outline"
                     className={`w-full justify-center ${isStepOverdue ? "animate-pulse" : ""}`}
@@ -437,20 +488,20 @@ export function LeadDetailDrawer({
                   </Button>
                 ) : null}
 
-                {status === "Won" ? (
+                {status === "won" ? (
                   <div className="rounded-lg bg-green-50 p-3 text-sm text-green-700">
                     Deal closed as won. Nice work.
                   </div>
                 ) : null}
 
-                {status === "Lost" ? (
+                {status === "lost" ? (
                   <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
                     Deal marked lost. Log the final note in Tasks.
                   </div>
                 ) : null}
               </div>
 
-              {status === "Arrange Visit" ? (
+              {isArrangeVisit ? (
                 <div className="mt-3">
                   <AddTaskModal
                     externalOpen={scheduleOpen}
@@ -468,6 +519,11 @@ export function LeadDetailDrawer({
               ) : null}
             </div>
 
+            <div className="grid gap-2">
+              <Label>Notes</Label>
+              <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
+            </div>
+
             <div className="rounded-xl border bg-card p-4">
               <div className="text-sm font-medium">
                 {contact ? `${contact.firstName} ${contact.lastName}` : "—"}
@@ -480,13 +536,43 @@ export function LeadDetailDrawer({
                   variant={statusBadgeVariant(status)}
                   className={statusBadgeClass(status)}
                 >
-                  {status}
+                  {statusLabel(status)}
                 </Badge>
                 {typeof lead.valueOmr === "number" && (
                   <Badge variant="outline">{formatOMR(lead.valueOmr)}</Badge>
                 )}
               </div>
             </div>
+
+            {lead.budgetMin || lead.budgetMax ? (
+              <div>
+                <p className="text-xs text-muted-foreground">Budget Range</p>
+                <p className="font-mono text-sm">
+                  {lead.budgetMin ? `OMR ${lead.budgetMin.toLocaleString()}` : ""}
+                  {lead.budgetMin && lead.budgetMax ? " – " : ""}
+                  {lead.budgetMax ? `OMR ${lead.budgetMax.toLocaleString()}` : ""}
+                </p>
+              </div>
+            ) : null}
+
+            {lead.unitSize ? (
+              <div>
+                <p className="text-xs text-muted-foreground">Unit Size</p>
+                <p className="text-sm">{lead.unitSize}</p>
+              </div>
+            ) : null}
+
+            {lead.createdByName ? (
+              <div className="flex items-center gap-2 rounded-lg bg-muted/50 p-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                  {lead.createdByName[0]?.toUpperCase()}
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Lead Owner</p>
+                  <p className="text-sm font-medium">{lead.createdByName}</p>
+                </div>
+              </div>
+            ) : null}
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="grid gap-2">
@@ -502,6 +588,26 @@ export function LeadDetailDrawer({
                 <Input value={valueOmr} onChange={(e) => setValueOmr(e.target.value)} />
               </div>
               <div className="grid gap-2">
+                <Label>Unit Size</Label>
+                <Input value={unitSize} onChange={(e) => setUnitSize(e.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Budget Min (OMR)</Label>
+                <Input
+                  type="number"
+                  value={budgetMin}
+                  onChange={(e) => setBudgetMin(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Budget Max (OMR)</Label>
+                <Input
+                  type="number"
+                  value={budgetMax}
+                  onChange={(e) => setBudgetMax(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
                 <Label>Status</Label>
                 <Select value={status} onValueChange={(v) => setStatus(v as LeadStatus)}>
                   <SelectTrigger>
@@ -510,7 +616,7 @@ export function LeadDetailDrawer({
                   <SelectContent>
                     {STATUSES.map((s) => (
                       <SelectItem key={s} value={s}>
-                        {s}
+                        {statusLabel(s)}
                       </SelectItem>
                     ))}
                   </SelectContent>

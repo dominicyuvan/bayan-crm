@@ -48,13 +48,18 @@ export interface Contact {
   lastContactAt?: Timestamp;
 }
 
-// Real estate workflow stages
+// Real estate workflow stages (legacy + current values)
 export type LeadStatus =
-  | "Initial Contact"
-  | "Send Brochure"
-  | "Arrange Visit"
-  | "Won"
-  | "Lost";
+  | "new"
+  | "contacted"
+  | "qualified"
+  | "initial_contact"
+  | "arrange_visit"
+  | "proposal_sent"
+  | "negotiation"
+  | "won"
+  | "lost"
+  | "on_hold";
 export type LeadTemperature = "cold" | "warm" | "hot";
 
 export interface Lead {
@@ -86,6 +91,11 @@ export interface Lead {
   wonAt?: Timestamp;
   lostAt?: Timestamp;
   generatedAt?: Timestamp;
+  budgetMin?: number;
+  budgetMax?: number;
+  unitSize?: string;
+  createdBy?: string;
+  createdByName?: string;
 }
 
 export type ActivityType =

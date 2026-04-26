@@ -189,7 +189,7 @@ export default function DashboardPage() {
     if (!profile?.uid) return [];
     return leads.items.filter((l) => {
       const ownerUid = l.assignedToUid ?? l.assignedRepId ?? "";
-      return ownerUid === profile.uid && l.status !== "Won" && l.status !== "Lost";
+      return ownerUid === profile.uid && l.status !== "won" && l.status !== "lost";
     });
   }, [leads.items, profile?.uid]);
 
@@ -275,9 +275,9 @@ export default function DashboardPage() {
       }
     ).length;
 
-    const pipelineValue = visibleLeads.reduce((sum, l) => {
-      return sum + (l.status !== "Lost" && l.status !== "Won" ? (l.valueOmr ?? 0) : 0);
-    }, 0);
+    const pipelineValue = visibleLeads
+      .filter((l) => l.status !== "won" && l.status !== "lost")
+      .reduce((sum, l) => sum + (l.value || l.budgetMax || l.budgetMin || l.valueOmr || 0), 0);
 
     return {
       contactsMadeToday,
@@ -294,13 +294,9 @@ export default function DashboardPage() {
     thisMonthStart.setHours(0, 0, 0, 0);
 
     return leads.items.filter((l) => {
-      if (l.status.toLowerCase() !== "won") return false;
+      if (l.status !== "won") return false;
       if (profile?.role === "agent" && l.assignedToUid !== profile.uid) return false;
-      const closedDate =
-        tsToDate(l.closedAt) ??
-        tsToDate((l as unknown as { closedAt?: typeof l.updatedAt }).closedAt) ??
-        tsToDate(l.updatedAt) ??
-        null;
+      const closedDate = l.closedAt?.toDate?.() || l.updatedAt?.toDate?.() || null;
       if (!closedDate) return true;
       return closedDate >= thisMonthStart;
     });
